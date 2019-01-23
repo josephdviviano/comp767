@@ -141,29 +141,28 @@ class ActionElimination(object):
                     arm.pull()
 
             # C controls how confident we are in our estimates
-            C = 2*self._U()
+            #C = 2*self._U()
+            C = self._C()
 
-            LOGGER.debug('t={}: k_remaining={}/{}, C={}'.format(
-                self.epoch, len(action_set), self.n, C)
-            )
 
             # Getting the best arm among the ones left
             ref_arm = action_set[
                 np.argmax([arm.mu_hat + C for arm in action_set])
             ]
 
-            for arm in action_set:
-                LOGGER.debug('ref_val/this_arm = {}/{}'.format(
-                    ref_arm.mu_hat-C, arm.mu_hat+C)
+            LOGGER.debug('t={}: ref_mu={}, k_remaining={}/{}, C={}'.format(
+                self.epoch, ref_arm.mu_hat, len(action_set), self.n, C)
             )
 
-            # Eliminating arms
+            # Eliminating arms using C
             action_set = [
                 arm for arm in action_set if ref_arm.mu_hat-C < arm.mu_hat+C
             ]
 
-
             self.epoch += 1
+
+        LOGGER.info('action elimination: best arm found = {}'.format(
+            action_set[0].mu_hat))
 
         return(action_set)
 
@@ -186,6 +185,14 @@ class ActionElimination(object):
 
         return(constant * np.sqrt(numerator / denominator))
 
+
+    def _C(self):
+        """successive elimination method from section 4"""
+        constant = (np.pi**2)/3
+        numerator = np.log(constant * (self.n*self.epoch**2) / self.delta)
+        C = np.sqrt(numerator / self.epoch)
+
+        return(C)
 
     #def _U2(self, var):
     #    """
