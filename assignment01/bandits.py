@@ -8,6 +8,8 @@ import logging
 import numpy as np
 import os
 import sys
+import warnings
+
 
 logging.basicConfig(level=logging.INFO,
     format="[%(name)s:%(funcName)s:%(lineno)s] %(levelname)s: %(message)s")
@@ -171,7 +173,14 @@ class ActionElimination(object):
         U is used to calculate this epoch's C, which controls exploration of the
         algorithm (larger U values means the algorithm is more likely to keep
         arms during the action elimination step).
+
+        TODO: depricate. converges very slowly, or not at all.
         """
+        warnings.warn(
+            "_U is deprecated, use _C instead",
+            DeprecationWarning
+        )
+
         # lemma 1 of Jamieson + Nowak 2014.
         tmp = (1+self.eps) * self.epoch
         constant = 1+np.sqrt(self.eps)
@@ -187,7 +196,11 @@ class ActionElimination(object):
 
 
     def _C(self):
-        """successive elimination method from section 4"""
+        """
+        Successive elimination method from section 4. C controls the
+        exploration of the algorithm (larger C values means the algorithm is
+        more likely to keep arms during the action elimination step).
+        """
         constant = (np.pi**2)/3
         numerator = np.log(constant * (self.n*self.epoch**2) / self.delta)
         C = np.sqrt(numerator / self.epoch)
