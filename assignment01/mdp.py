@@ -91,5 +91,69 @@ class Grid(object):
     def __getitem__(self, X):
         return self._grid[X]
 
+    def __iter__(self):
+        for i in range(self.n):
+            for j in range(self.n):
+                yield(self[i, j])
+
     def __repr__(self):
         return print_grid(self.rewards)
+
+
+class Policy(object):
+    """docstring for Policy"""
+
+    def __init__(self, grid):
+        super(Policy, self).__init__()
+        self.grid = grid
+        self._policy = {
+            s: {
+                Action.UP: 0.25,
+                Action.RIGHT: 0.25,
+                Action.DOWN: 0.25,
+                Action.LEFT: 0.25
+            } for s in grid
+        }
+
+    def __getitem__(self, state):
+        return self._policy[state]
+
+    def __len__(self):
+        return len(self._policy)
+
+
+class Transition(object):
+    """docstring for Transition"""
+
+    def __init__(self, policy, p):
+        super(Transition, self).__init__()
+        self.policy = policy
+        self._grid = policy.grid
+        self._state_idx = {state: i for i, state in enumerate(policy.grid)}
+        self.p = p
+
+    @property
+    def matrix(self):
+        k = len(self.policy)
+        t = np.zeros((k, k))
+        # For every possible state s
+        for state, i in self._state_idx.items():
+            # For every allowed action starting from state s
+            neighbours = self._grid.neighbours(state)
+            allowed_action = self.policy[state]
+            num_actions = len(allowed_action)
+            for action, action_prob in allowed_action.items():
+                for _action in allowed_action:
+                    state_prime = neighbours[_action]
+                    j = self._state_idx[state_prime]
+
+                    # taking the action may take us to state prime with
+                    # probability p
+                    if action == _action:
+                        t[i, j] += self.p * action_prob
+                    # or get to a random direction with probability (1 - p)
+                    else:
+                        # The random direction is encoded by dividing (1 - p)
+                        # by the number of other directions
+                        t[i, j] += (1 - self.p) / (num_actions - 1) * action_prob
+        return t
