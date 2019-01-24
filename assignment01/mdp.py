@@ -56,9 +56,8 @@ def print_grid(values):
 class Grid(object):
     """docstring for Grid"""
 
-    def __init__(self, p, n):
+    def __init__(self, n):
         super(Grid, self).__init__()
-        self.p = p
         self.n = n
         self._grid = np.empty((n, n), dtype=np.object)
 
@@ -108,10 +107,10 @@ class Policy(object):
         self.grid = grid
         self._policy = {
             s: {
-                Action.UP: 0.25,
-                Action.RIGHT: 0.25,
-                Action.DOWN: 0.25,
-                Action.LEFT: 0.25
+                Action.UP: 0.7,
+                Action.RIGHT: 0.1,
+                Action.DOWN: 0.1,
+                Action.LEFT: 0.1
             } for s in grid
         }
 
