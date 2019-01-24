@@ -107,10 +107,10 @@ class Policy(object):
         self.grid = grid
         self._policy = {
             s: {
-                Action.UP: 0.7,
-                Action.RIGHT: 0.1,
-                Action.DOWN: 0.1,
-                Action.LEFT: 0.1
+                Action.UP: 0.25,
+                Action.RIGHT: 0.25,
+                Action.DOWN: 0.25,
+                Action.LEFT: 0.25
             } for s in grid
         }
 
@@ -132,9 +132,12 @@ class Transition(object):
         self.p = p
 
     @property
-    def matrix(self):
+    def matrix_tensor(self):
         k = len(self.policy)
-        t = np.zeros((k, k))
+
+        # If we want to be a bit more dynamic we should check how many
+        # action the policy allows.
+        t = np.zeros((k, k, 4))
         # For every possible state s
         for state, i in self._state_idx.items():
             # For every allowed action starting from state s
@@ -142,6 +145,7 @@ class Transition(object):
             allowed_action = self.policy[state]
             num_actions = len(allowed_action)
             for action, action_prob in allowed_action.items():
+                k = action.value
                 for _action in allowed_action:
                     state_prime = neighbours[_action]
                     j = self._state_idx[state_prime]
@@ -149,10 +153,14 @@ class Transition(object):
                     # taking the action may take us to state prime with
                     # probability p
                     if action == _action:
-                        t[i, j] += self.p * action_prob
+                        t[i, j, k] += self.p * action_prob
                     # or get to a random direction with probability (1 - p)
                     else:
                         # The random direction is encoded by dividing (1 - p)
                         # by the number of other directions
-                        t[i, j] += (1 - self.p) / (num_actions - 1) * action_prob
+                        t[i, j, k] += (1 - self.p) / (num_actions - 1) * action_prob
         return t
+
+    @property
+    def matrix(self):
+        return self.matrix_tensor.sum(axis=2)
