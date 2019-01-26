@@ -29,7 +29,7 @@ import argparse
 from tqdm import tqdm
 
 
-State = namedtuple('State', ['i', 'j', 'reward'])
+State = namedtuple('State', ['i', 'j', 'reward', 'terminal'])
 
 
 def parse_args():
@@ -149,11 +149,11 @@ class Grid(object):
         for i in range(n):
             for j in range(n):
                 if i == 0 and j == 0:
-                    state = State(i, j, 1)
+                    state = State(i, j, 1, True)
                 elif i == 0 and j == (n - 1):
-                    state = State(i, j, 10)
+                    state = State(i, j, 10, True)
                 else:
-                    state = State(i, j, 0)
+                    state = State(i, j, 0, False)
                 self._grid[i, j] = state
 
     @property
@@ -218,6 +218,8 @@ class Policy(object):
     def update(self, pi):
         for i, state in enumerate(self.grid):
             for j, prob in enumerate(pi[i]):
+                if state.terminal:
+                    prob = 0
                 self._policy[state][Action(j)] = prob
 
 
@@ -258,7 +260,8 @@ class Environment(object):
                     else:
                         # The random direction is encoded by dividing (1 - p)
                         # by the number of other directions
-                        t[i, j, k] += (1 - self.p) / (num_actions - 1) * action_prob
+                        p = (1 - self.p) / (num_actions - 1) * action_prob
+                        t[i, j, k] += p
         return t
 
     @property
@@ -303,9 +306,17 @@ class PolicyIteration(object):
         #  every state. Then check if more than one action has that value
         #  and split the probability between the actions with the same max
         #  value
-        max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)]
-        pi = (tmp == max_val[:, None]).astype(int)
+        max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)][:, None]
+
+        #  Mask terminal states. If the max value is zero across all actions
+        #  then it's a terminal state.
+        mask = (max_val != 0).astype(int)
+        pi = (tmp == max_val).astype(int)
         pi = pi / pi.sum(axis=1)[:, None]
+        pi *= mask
+        # for i, state in enumerate(self.policy.grid):
+        #     if state.terminal:
+        #         pi[i] = 0
         if (pi == self.policy.as_matrix()).all():
             return False
         else:
@@ -352,9 +363,16 @@ class ValueIteration(object):
         #  every state. Then check if more than one action has that value
         #  and split the probability between the actions with the same max
         #  value
-        max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)]
-        pi = (tmp == max_val[:, None]).astype(int)
-        pi = pi / pi.sum(axis=1)[:, None]
+        argmax = tmp.argmax(axis=1)
+        max_val = tmp[np.arange(tmp.shape[0]), argmax][:, None]
+
+        #  Mask terminal states. If the max value is zero across all actions
+        #  then it's a terminal state.
+        mask = (max_val != 0).astype(int)
+
+        pi = np.zeros_like(tmp)
+        pi[np.arange(pi.shape[0]), argmax] = 1.0
+        pi *= mask
         self.policy.update(pi)
 
 
@@ -364,7 +382,7 @@ def policy_iteration(env, policy, discount, theta):
         iteration = PolicyIteration(env, policy, discount, theta)
         V = iteration.evaluation()
         n = policy.grid.n
-        print(print_grid(V.reshape((n, n)).astype(int)))
+        print(V.reshape((n, n)))
         improved = iteration.improvement(V)
     print(print_policy(policy))
 
@@ -373,7 +391,7 @@ def value_iteration(env, policy, discount, theta):
     iteration = PolicyIteration(env, policy, discount, theta)
     V = iteration.evaluation()
     n = policy.grid.n
-    print(print_grid(V.reshape((n, n)).astype(int)))
+    print(V.reshape((n, n)))
     iteration.improvement(V)
 
     print(print_policy(policy))
@@ -387,6 +405,22 @@ if __name__ == '__main__':
     args = parse_args()
     grid = Grid(args.size)
     policy = Policy(grid)
+    #  Small adjustments to the policy to have terminal states
+    top_right = grid[0, args.size - 1]
+    top_left = grid[0, 0]
+    policy._policy[top_right] = {
+        Action.UP: 0.,
+        Action.RIGHT: 0.,
+        Action.DOWN: 0.,
+        Action.LEFT: 0.
+    }
+    policy._policy[top_left] = {
+        Action.UP: 0.,
+        Action.RIGHT: 0.,
+        Action.DOWN: 0.,
+        Action.LEFT: 0.
+    }
+
     env = Environment(policy, args.prob)
 
     if args.iteration == 'policy':
