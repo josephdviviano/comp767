@@ -302,7 +302,7 @@ class PolicyIteration(object):
         #  This is looking for the maximum value across all the actions for
         #  every state. Then check if more than one action has that value
         #  and split the probability between the actions with the same max
-        # value
+        #  value
         max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)]
         pi = (tmp == max_val[:, None]).astype(int)
         pi = pi / pi.sum(axis=1)[:, None]
@@ -313,20 +313,70 @@ class PolicyIteration(object):
             return True
 
 
+class ValueIteration(object):
+    """docstring for ValueIteration"""
+
+    def __init__(self, env, policy, discount, theta=0.0001):
+        super(ValueIteration, self).__init__()
+        self.env = env
+        self.policy = policy
+        self.theta = theta
+        self.discount = discount
+
+    def evaluation(self):
+        # Make sure it starts higher than the stopping condition
+        delta = self.theta * 10.
+        V = np.zeros((len(policy), 1))
+        pbar = tqdm(desc="delta {:.5f}".format(delta), leave=False)
+        while delta > self.theta:
+            v = V.copy()
+
+            tmp = np.dot(
+                env.P_a.transpose(0, 2, 1),
+                env.rewards + self.discount * V
+            ).squeeze(2)
+
+            V = tmp.max(axis=1)[:, None]
+            delta = np.abs(v - V).max()
+            pbar.update(1)
+            pbar.set_description("delta: {:.5f}".format(delta))
+        return V
+
+    def improvement(self, V):
+        tmp = np.dot(
+            env.P_a.transpose(0, 2, 1),
+            env.rewards + self.discount * V
+        ).squeeze(2)
+
+        #  This is looking for the maximum value across all the actions for
+        #  every state. Then check if more than one action has that value
+        #  and split the probability between the actions with the same max
+        #  value
+        max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)]
+        pi = (tmp == max_val[:, None]).astype(int)
+        pi = pi / pi.sum(axis=1)[:, None]
+        self.policy.update(pi)
+
+
 def policy_iteration(env, policy, discount, theta):
     improved = True
     while improved:
         iteration = PolicyIteration(env, policy, discount, theta)
         V = iteration.evaluation()
         n = policy.grid.n
-        print(V.reshape((n, n)))
+        print(print_grid(V.reshape((n, n)).astype(int)))
         improved = iteration.improvement(V)
-
     print(print_policy(policy))
 
 
-def value_iteration():
-    pass
+def value_iteration(env, policy, discount, theta):
+    iteration = PolicyIteration(env, policy, discount, theta)
+    V = iteration.evaluation()
+    n = policy.grid.n
+    print(print_grid(V.reshape((n, n)).astype(int)))
+    iteration.improvement(V)
+
+    print(print_policy(policy))
 
 
 def modified_iteration():
@@ -342,6 +392,6 @@ if __name__ == '__main__':
     if args.iteration == 'policy':
         policy_iteration(env, policy, args.discount, args.theta)
     elif args.iteration == 'value':
-        value_iteration()
+        value_iteration(env, policy, args.discount, args.theta)
     else:
         modified_iteration()
