@@ -137,10 +137,10 @@ class ActionElimination(object):
         action_set = self.arms
         self.epoch = 1
 
+        # pull arm once per 'epoch'
         while len(action_set) > 1:
             for arm in action_set:
-                for _ in range(self.r):
-                    arm.pull()
+                arm.pull()
 
             # C controls how confident we are in our estimates
             #C = 2*self._U()
@@ -181,19 +181,18 @@ class ActionElimination(object):
             DeprecationWarning
         )
 
-        # lemma 1 of Jamieson + Nowak 2014.
-        tmp = (1+self.eps) * self.epoch
+        # lemma 1 of Jamieson + Nowak 2014, with typo fixed!
         constant = 1+np.sqrt(self.eps)
 
         # delta is normalized by the original number of arms
-        numerator = tmp * np.log(np.log(tmp) / (self.delta/self.n))
+        e = 1+self.eps
+        numerator = (e * self.epoch) * (np.log(np.log(e)) / (self.delta/self.n))
         denominator = 2*self.epoch
 
         LOGGER.debug('constant={}, numerator={}, denominator={}'.format(
             constant, numerator, denominator))
 
         return(constant * np.sqrt(numerator / denominator))
-
 
     def _C(self):
         """
@@ -207,54 +206,61 @@ class ActionElimination(object):
 
         return(C)
 
-    #def _U2(self, var):
-    #    """
-    #    Basic confidence interval...
-    #    """
-    #    conf = 1.05 # alpha=0.05
-    #    np.sqrt(var) / np.log(1+ (self.epoch/))
-    #    return(1.05 * np.sqrt(variance))/np.log(1+(arm_count[i]/n))
-
-
 
 class UCB(object):
     """Runs the UCB/LUCB algorithm with the supplied settings."""
 
-    def __init__(self, delta, epsilon, r, pulls, n, arms, mode='normal'):
+    def __init__(self, delta, eps, r, arms, mode='normal'):
 
         self.delta = delta
-        self.epsilon = epsilon
+        self.eps = eps
+        self.beta = beta
+        self.lamb = lamb
         self.r = r
-        self.pulls = pulls
-        self.n = n
         self.arms = arms
-        self.K = len(self.arms)
-        self.Q = np.zeros((self.n, self.K)) # reward estimated
-        self.N = np.ones((self.n, self.K))  # n times each arm is pulled (min=1)
+
+        self.k = len(self.arms)
+        self.Q = np.zeros((self.r, self.K)) # reward estimated
+        self.N = np.ones((self.r, self.K))  # n times each arm is pulled (min=1)
+
+    def _compare_vecs(self, a, b):
+        n_less =
+
 
     def run(self):
 
-        Qi = np.random.normal(Q_STAR, 1) # first pull of all arms
-        Qi_mean = np.mean(Qi)
+        action_set = self.arms
+        self.epoch = 1
 
-        R = np.zeros(pulls-1)
+        # initialize all arms
+        for arm in action_set:
+            arm.pull()
 
-        for pull in range(pulls-1):
+        Ti = np.zeros(self.k) # number of times each arm has been pulled
+        Ts = np.ones(self.k)  # stopping condition
 
-            # run n experiments in loop (could vectorize?)
-            for i in range(n):
+        #sigma = 0.25**2 # TODO: scale parameter, where does it come from?
 
-                # square root term is an estimate of uncertianty in estimate of At
-                ucb_Q = Q[i, :] + (C * np.sqrt(np.log(pull) / N[i, :]))
-                At = np.argmax(ucb_Q)
+        # for calculating It at each iteration
+        #const = (1+self.beta) * (1+np.sqrt(self.eps))
+        #num_const = 2*sigma * (1+self.eps)
 
-                # reward for this pull dependent on action At
-                R[pull] = np.random.normal(Q_STAR[At], 1)
+        # continue until Ti is greater than Ts for all indices
+        while np.sum(Ti < Ts) > 0:
 
-                N[i, At] += 1
-                Q[i, At] = Q[i, At] + (R[pull]-Q[i, At]) / N[i, At]
+            It_candidates = np.zeros(self.k)
 
-        R_mean = np.mean(R, axis=1)
+            for i, arm in enumerate(arms):
+                arm.pull() # sample arm
+
+                # calculated in loop as it depends on Ti[i]
+                #num = num_const * np.log(np.log((1+self.eps)*Ti[i])/self.delta)
+
+                # lilUCB formula from Jamieson et al 2014
+                #It_candidates[i] = (arm.mu_hat + const) * np.sqrt(num / Ti[i])
+
+            It = action_set[np.argmax(It_candidates)]
+            Ti[np.argmax(It_candidates)] += 1
 
 
 if __name__ == '__main__':
@@ -274,7 +280,9 @@ if __name__ == '__main__':
     ae = ActionElimination(args.delta, args.epsilon, args.repeats, arms)
     ae_results = ae.run()
 
-    #ucb = UCB(args.delta, args.epsilon, args.r, args.p, args.n, arms)
+    ucb = UCB(args.delta, args.epsilon, args.repeats, arms)
+    ucb_results = ucb.run()
+
     #lucb = UCB(args.delta, args.epsilon, args.r, args.p, args.n, arms, mode='lucb')
 
 
