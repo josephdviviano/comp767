@@ -25,9 +25,50 @@ values of p (0.9 and 0.7) and with two different sizes of gird
 from collections import namedtuple
 import numpy as np
 from enum import Enum
+import argparse
+from tqdm import tqdm
 
 
 State = namedtuple('State', ['i', 'j', 'reward'])
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='bla bla bla')
+
+    parser.add_argument(
+        '--size',
+        help="Size of the grid",
+        default=5,
+        type=int
+    )
+
+    parser.add_argument(
+        '-p', '--prob',
+        help="Probability of a successful action",
+        default=0.7,
+        type=float
+    )
+
+    parser.add_argument(
+        '--iteration',
+        help="Probability of a successful action",
+        required=True,
+        choices=['policy', 'value', 'modified']
+    )
+
+    parser.add_argument(
+        '-t', '--theta',
+        default=0.0001,
+        type=float
+    )
+
+    parser.add_argument(
+        '-d', '--discount',
+        default=1.0,
+        type=float
+    )
+
+    return parser.parse_args()
 
 
 class Action(Enum):
@@ -49,7 +90,51 @@ def print_grid(values):
             out += "{:^3s}│".format(str(values[i][j]))
         if i != (n - 1):
             out += "\n├" + "───┼" * (n - 1) + "───┤\n"
-    out += "\n└" + "───┴" * (n - 1) + "───┘"
+    out += "\n└" + "───┴" * (m - 1) + "───┘"
+    return out
+
+
+def print_policy(policy):
+    "⇠⇢⇡⇣"
+    up = " ⇡ "
+    down = " ⇣ "
+    left = "⇠  "
+    right = "  ⇢"
+    left_right = "⇠ ⇢"
+
+    n = policy.grid.n
+    out = "┌" + "───┬" * (n - 1) + "───┐\n"
+    for i in range(n):
+        out += "│"
+        for j in range(n):
+            state = policy.grid[i, j]
+            if policy[state][Action.UP] > 0:
+                out += up + "│"
+            else:
+                out += "   │"
+        out += "\n│"
+        for j in range(n):
+            state = policy.grid[i, j]
+            if policy[state][Action.LEFT] > 0 and policy[state][Action.RIGHT] > 0:
+                out += left_right + "│"
+            elif policy[state][Action.LEFT] > 0:
+                out += left + "│"
+            elif policy[state][Action.RIGHT] > 0:
+                out += right + "│"
+            else:
+                out += "   │"
+        out += "\n│"
+        for j in range(n):
+            state = policy.grid[i, j]
+            if policy[state][Action.DOWN] > 0:
+                out += down + "│"
+            else:
+                out += "   │"
+        out += "\n"
+        if i != (n - 1):
+            out += "├" + "───┼" * (n - 1) + "───┤\n"
+
+    out += "└" + "───┴" * (n - 1) + "───┘"
     return out
 
 
@@ -120,19 +205,34 @@ class Policy(object):
     def __len__(self):
         return len(self._policy)
 
+    def as_matrix(self):
+        #  If we want to be more dynamic we should check how many actions
+        # are actually allowed across all states
+        pi = np.zeros((len(self), 4))
+        #  Iterating of the grid to make sure we always iteration the same way
+        for i, state in enumerate(self.grid):
+            for action, prob in self[state].items():
+                pi[i, action.value] = prob
+        return pi
 
-class Transition(object):
-    """docstring for Transition"""
+    def update(self, pi):
+        for i, state in enumerate(self.grid):
+            for j, prob in enumerate(pi[i]):
+                self._policy[state][Action(j)] = prob
+
+
+class Environment(object):
+    """docstring for Environment"""
 
     def __init__(self, policy, p):
-        super(Transition, self).__init__()
+        super(Environment, self).__init__()
         self.policy = policy
         self._grid = policy.grid
         self._state_idx = {state: i for i, state in enumerate(policy.grid)}
         self.p = p
 
     @property
-    def matrix_tensor(self):
+    def P_a(self):
         k = len(self.policy)
 
         # If we want to be a bit more dynamic we should check how many
@@ -162,5 +262,86 @@ class Transition(object):
         return t
 
     @property
-    def matrix(self):
-        return self.matrix_tensor.sum(axis=2)
+    def P(self):
+        return self.P_a.sum(axis=2)
+
+    @property
+    def rewards(self):
+        return np.array([s.reward for s in self._state_idx])[:, None]
+
+
+class PolicyIteration(object):
+    """docstring for PolicyIteration"""
+
+    def __init__(self, env, policy, discount, theta=0.0001):
+        super(PolicyIteration, self).__init__()
+        self.env = env
+        self.policy = policy
+        self.theta = theta
+        self.discount = discount
+
+    def evaluation(self):
+        # Make sure it starts higher than the stopping condition
+        delta = self.theta * 10.
+        V = np.zeros((len(policy), 1))
+        pbar = tqdm(desc="delta {:.5f}".format(delta), leave=False)
+        while delta > self.theta:
+            v = V.copy()
+            V = np.dot(env.P, self.env.rewards + V * self.discount)
+            delta = np.abs(v - V).max()
+            pbar.update(1)
+            pbar.set_description("delta: {:.5f}".format(delta))
+        return V
+
+    def improvement(self, V):
+        tmp = np.dot(
+            env.P_a.transpose(0, 2, 1),
+            env.rewards + self.discount * V
+        ).squeeze(2)
+
+        #  This is looking for the maximum value across all the actions for
+        #  every state. Then check if more than one action has that value
+        #  and split the probability between the actions with the same max
+        # value
+        max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)]
+        pi = (tmp == max_val[:, None]).astype(int)
+        pi = pi / pi.sum(axis=1)[:, None]
+        if (pi == self.policy.as_matrix()).all():
+            return False
+        else:
+            self.policy.update(pi)
+            return True
+
+
+def policy_iteration(env, policy, discount, theta):
+    improved = True
+    while improved:
+        iteration = PolicyIteration(env, policy, discount, theta)
+        V = iteration.evaluation()
+        n = policy.grid.n
+        print(V.reshape((n, n)))
+        improved = iteration.improvement(V)
+
+    print(print_policy(policy))
+
+
+def value_iteration():
+    pass
+
+
+def modified_iteration():
+    pass
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    grid = Grid(args.size)
+    policy = Policy(grid)
+    env = Environment(policy, args.prob)
+
+    if args.iteration == 'policy':
+        policy_iteration(env, policy, args.discount, args.theta)
+    elif args.iteration == 'value':
+        value_iteration()
+    else:
+        modified_iteration()
