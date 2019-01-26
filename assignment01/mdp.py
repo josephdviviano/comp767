@@ -149,9 +149,9 @@ class Grid(object):
         for i in range(n):
             for j in range(n):
                 if i == 0 and j == 0:
-                    state = State(i, j, 10)
-                elif i == 0 and j == (n - 1):
                     state = State(i, j, 1)
+                elif i == 0 and j == (n - 1):
+                    state = State(i, j, 10)
                 else:
                     state = State(i, j, 0)
                 self._grid[i, j] = state
