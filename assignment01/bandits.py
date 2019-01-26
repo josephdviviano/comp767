@@ -38,18 +38,12 @@ def parse_args():
     )
 
     parser.add_argument(
+        '-b', '--beta', default=1, type=float
+    )
+
+    parser.add_argument(
         '-r', '--repeats', default=1, type=int,
-        help="Number of times the arms will be sampled at each epoch"
-    )
-
-    parser.add_argument(
-        '-p', '--pulls', default=100, type=int,
-        help='Maximum number of pulls'
-    )
-
-    parser.add_argument(
-        '--n', '--nexp', default=5000, type=int,
-        help='number of experiments to run'
+        help="Number of times each run will be repeated."
     )
 
     parser.add_argument(
@@ -126,21 +120,60 @@ class ActionElimination(object):
                 delta_max)
             )
 
+        self.arms = arms
+        self.n = len(self.arms)
+
         self.delta = delta
         self.eps = eps
         self.r = r
-        self.arms = arms
-        self.n = len(self.arms)
         self.epoch = None
+
+    def _U(self):
+        """
+        U is used to calculate this epoch's C, which controls exploration of the
+        algorithm (larger U values means the algorithm is more likely to keep
+        arms during the action elimination step).
+
+        TODO: depricate. converges very slowly, or not at all.
+        """
+        warnings.warn(
+            "_U is deprecated, use _C instead",
+            DeprecationWarning
+        )
+
+        # lemma 1 of Jamieson + Nowak 2014, with typo fixed!
+        constant = 1+np.sqrt(self.eps)
+
+        # delta is normalized by the original number of arms
+        e = 1+self.eps
+        numerator = (e * self.epoch) * (np.log(np.log(e)) / (self.delta/self.n))
+        denominator = 2*self.epoch
+
+        LOGGER.debug('constant={}, numerator={}, denominator={}'.format(
+            constant, numerator, denominator))
+
+        return(constant * np.sqrt(numerator / denominator))
+
+    def _C(self):
+        """
+        Successive elimination method from section 4. C controls the
+        exploration of the algorithm (larger C values means the algorithm is
+        more likely to keep arms during the action elimination step).
+        """
+        constant = (np.pi**2)/3
+        numerator = np.log(constant * (self.n*self.epoch**2) / self.delta)
+        C = np.sqrt(numerator / self.epoch)
+
+        return(C)
 
     def run(self):
         action_set = self.arms
         self.epoch = 1
 
+        # pull arm once per 'epoch'
         while len(action_set) > 1:
             for arm in action_set:
-                for _ in range(self.r):
-                    arm.pull()
+                arm.pull()
 
             # C controls how confident we are in our estimates
             #C = 2*self._U()
@@ -168,32 +201,48 @@ class ActionElimination(object):
 
         return(action_set)
 
-    def _U(self):
+
+class UCB(object):
+    """Runs the UCB/LUCB algorithm with the supplied settings."""
+
+    def __init__(self, beta, delta, eps, r, arms, mode='normal'):
+
+        self.arms = arms
+        self.k = len(self.arms)
+
+        self.eps = eps         # stopping parameter
+        self.beta = beta       # stopping parameter
+        self.delta = delta     # stopping parameter
+        self.alpha = self._a() # stopping parameter
+        self.C = 0             # exploration parameter
+        self.r = r
+        self.Ti = np.ones(self.k) # number of times each arm is pulled
+
+        print(self.k)
+
+    def _stoppping_criteria(self, a):
         """
-        U is used to calculate this epoch's C, which controls exploration of the
-        algorithm (larger U values means the algorithm is more likely to keep
-        arms during the action elimination step).
-
-        TODO: depricate. converges very slowly, or not at all.
+        Returns True if there exists an element in a that is larger than
+        the sum of the remaining elements (weighted by alpha).
         """
-        warnings.warn(
-            "_U is deprecated, use _C instead",
-            DeprecationWarning
-        )
+        idx = np.arange(self.k)
 
-        # lemma 1 of Jamieson + Nowak 2014.
-        tmp = (1+self.eps) * self.epoch
-        constant = 1+np.sqrt(self.eps)
+        for i, element in enumerate(a):
+            idx_remaining = np.setdiff1d(idx, i)
 
-        # delta is normalized by the original number of arms
-        numerator = tmp * np.log(np.log(tmp) / (self.delta/self.n))
-        denominator = 2*self.epoch
+            if a[i] > self.alpha * np.sum(a[idx_remaining]):
+                return(True)
 
-        LOGGER.debug('constant={}, numerator={}, denominator={}'.format(
-            constant, numerator, denominator))
+        return(False)
 
-        return(constant * np.sqrt(numerator / denominator))
+    def _a(self):
+        """Weight for stopping criteria."""
+        term1 = ((2+self.beta) / self.beta)**2
+        numer = np.log(2*np.log(term1 * (self.k / self.delta)))
+        denom = np.log(self.k / self.delta)
+        a = term1 * (1 + (numer / denom))
 
+        return(a)
 
     def _C(self):
         """
@@ -202,59 +251,45 @@ class ActionElimination(object):
         more likely to keep arms during the action elimination step).
         """
         constant = (np.pi**2)/3
-        numerator = np.log(constant * (self.n*self.epoch**2) / self.delta)
+        numerator = np.log(constant * (self.k*self.epoch**2) / self.delta)
         C = np.sqrt(numerator / self.epoch)
 
         return(C)
 
-    #def _U2(self, var):
-    #    """
-    #    Basic confidence interval...
-    #    """
-    #    conf = 1.05 # alpha=0.05
-    #    np.sqrt(var) / np.log(1+ (self.epoch/))
-    #    return(1.05 * np.sqrt(variance))/np.log(1+(arm_count[i]/n))
-
-
-
-class UCB(object):
-    """Runs the UCB/LUCB algorithm with the supplied settings."""
-
-    def __init__(self, delta, epsilon, r, pulls, n, arms, mode='normal'):
-
-        self.delta = delta
-        self.epsilon = epsilon
-        self.r = r
-        self.pulls = pulls
-        self.n = n
-        self.arms = arms
-        self.K = len(self.arms)
-        self.Q = np.zeros((self.n, self.K)) # reward estimated
-        self.N = np.ones((self.n, self.K))  # n times each arm is pulled (min=1)
-
     def run(self):
 
-        Qi = np.random.normal(Q_STAR, 1) # first pull of all arms
-        Qi_mean = np.mean(Qi)
+        action_set = self.arms
+        self.epoch = 1
 
-        R = np.zeros(pulls-1)
+        # initialize all arms
+        for At in action_set:
+            At.pull()
 
-        for pull in range(pulls-1):
+        self.Ti = np.ones(self.k) # number of times each arm has been pulled
 
-            # run n experiments in loop (could vectorize?)
-            for i in range(n):
+        # continue until Ti is greater than Ts for all indices
+        while not self._stoppping_criteria(self.Ti):
 
-                # square root term is an estimate of uncertianty in estimate of At
-                ucb_Q = Q[i, :] + (C * np.sqrt(np.log(pull) / N[i, :]))
-                At = np.argmax(ucb_Q)
+            At_candidates = np.zeros(self.k)
 
-                # reward for this pull dependent on action At
-                R[pull] = np.random.normal(Q_STAR[At], 1)
+            for i, arm in enumerate(arms):
+                arm.pull() # sample arm
 
-                N[i, At] += 1
-                Q[i, At] = Q[i, At] + (R[pull]-Q[i, At]) / N[i, At]
+                # UCB1 criteria for selecting next action
+                numer = np.log(self.epoch)
+                denom = self.Ti[i]
+                At_candidates[i] = arm.mu_hat + (self._C() * np.sqrt(numer/denom))
 
-        R_mean = np.mean(R, axis=1)
+            At = action_set[np.argmax(At_candidates)]
+            At.pull() # sample arm
+            self.Ti[np.argmax(At_candidates)] += 1
+            self.epoch += 1
+
+        # return best arm in Ti
+        At = action_set[np.argmax(self.Ti)]
+        LOGGER.info('UCB: best arm found = {}'.format(At.mu_hat))
+
+        return(At)
 
 
 if __name__ == '__main__':
@@ -274,7 +309,9 @@ if __name__ == '__main__':
     ae = ActionElimination(args.delta, args.epsilon, args.repeats, arms)
     ae_results = ae.run()
 
-    #ucb = UCB(args.delta, args.epsilon, args.r, args.p, args.n, arms)
+    ucb = UCB(args.beta, args.delta, args.epsilon, args.repeats, arms)
+    ucb_results = ucb.run()
+
     #lucb = UCB(args.delta, args.epsilon, args.r, args.p, args.n, arms, mode='lucb')
 
 
