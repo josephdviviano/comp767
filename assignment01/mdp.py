@@ -190,14 +190,17 @@ class Policy(object):
     def __init__(self, grid):
         super(Policy, self).__init__()
         self.grid = grid
-        self._policy = {
-            s: {
-                Action.UP: 0.25,
-                Action.RIGHT: 0.25,
-                Action.DOWN: 0.25,
-                Action.LEFT: 0.25
-            } for s in grid
-        }
+        self._policy = {}
+        for s in grid:
+            prob = 0.25
+            if s.terminal:
+                prob = 0
+            self._policy[s] = {
+                Action.UP: prob,
+                Action.RIGHT: prob,
+                Action.DOWN: prob,
+                Action.LEFT: prob
+            }
 
     def __getitem__(self, state):
         return self._policy[state]
@@ -405,21 +408,6 @@ if __name__ == '__main__':
     args = parse_args()
     grid = Grid(args.size)
     policy = Policy(grid)
-    #  Small adjustments to the policy to have terminal states
-    top_right = grid[0, args.size - 1]
-    top_left = grid[0, 0]
-    policy._policy[top_right] = {
-        Action.UP: 0.,
-        Action.RIGHT: 0.,
-        Action.DOWN: 0.,
-        Action.LEFT: 0.
-    }
-    policy._policy[top_left] = {
-        Action.UP: 0.,
-        Action.RIGHT: 0.,
-        Action.DOWN: 0.,
-        Action.LEFT: 0.
-    }
 
     env = Environment(policy, args.prob)
 
