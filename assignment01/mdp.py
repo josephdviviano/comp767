@@ -27,6 +27,8 @@ import numpy as np
 from enum import Enum
 import argparse
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
 
 
 State = namedtuple('State', ['i', 'j', 'reward', 'terminal'])
@@ -66,6 +68,11 @@ def parse_args():
         '-d', '--discount',
         default=1.0,
         type=float
+    )
+
+    parser.add_argument(
+        '-k',
+        type=int
     )
 
     return parser.parse_args()
@@ -279,25 +286,36 @@ class Environment(object):
 class PolicyIteration(object):
     """docstring for PolicyIteration"""
 
-    def __init__(self, env, policy, discount, theta=0.0001):
+    def __init__(self, env, policy, discount, theta=0.0001, k=float("inf")):
         super(PolicyIteration, self).__init__()
         self.env = env
         self.policy = policy
         self.theta = theta
         self.discount = discount
 
+        #  This parameter is to use Modified Policy Iteration
+        self.k = k
+
     def evaluation(self):
         # Make sure it starts higher than the stopping condition
         delta = self.theta * 10.
         V = np.zeros((len(policy), 1))
-        pbar = tqdm(desc="delta {:.5f}".format(delta), leave=False)
-        while delta > self.theta:
+        # pbar = tqdm(desc="delta {:.5f}".format(delta), leave=False)
+        epoch = 0
+        n = self.policy.grid.n
+        values = []
+        while delta > self.theta and epoch < self.k:
+            # Saving values of bottom left and right corner
+            # for plotting purposes
+            _V = V.reshape((n, n))
+            values.append((_V[-1, 0], _V[-1, -1]))
             v = V.copy()
             V = np.dot(env.P, self.env.rewards + V * self.discount)
             delta = np.abs(v - V).max()
-            pbar.update(1)
-            pbar.set_description("delta: {:.5f}".format(delta))
-        return V
+            # pbar.update(1)
+            # pbar.set_description("delta: {:.5f}".format(delta))
+            epoch += 1
+        return V, values
 
     def improvement(self, V):
         tmp = np.dot(
@@ -311,15 +329,11 @@ class PolicyIteration(object):
         #  value
         max_val = tmp[np.arange(tmp.shape[0]), tmp.argmax(axis=1)][:, None]
 
-        #  Mask terminal states. If the max value is zero across all actions
-        #  then it's a terminal state.
-        mask = (max_val != 0).astype(int)
         pi = (tmp == max_val).astype(int)
         pi = pi / pi.sum(axis=1)[:, None]
-        pi *= mask
-        # for i, state in enumerate(self.policy.grid):
-        #     if state.terminal:
-        #         pi[i] = 0
+        for i, state in enumerate(self.policy.grid):
+            if state.terminal:
+                pi[i] = 0
         if (pi == self.policy.as_matrix()).all():
             return False
         else:
@@ -342,7 +356,11 @@ class ValueIteration(object):
         delta = self.theta * 10.
         V = np.zeros((len(policy), 1))
         pbar = tqdm(desc="delta {:.5f}".format(delta), leave=False)
+        values = []
+        n = self.policy.grid.n
         while delta > self.theta:
+            _V = V.reshape((n, n))
+            values.append((_V[-1, 0], _V[-1, -1]))
             v = V.copy()
 
             tmp = np.dot(
@@ -354,7 +372,7 @@ class ValueIteration(object):
             delta = np.abs(v - V).max()
             pbar.update(1)
             pbar.set_description("delta: {:.5f}".format(delta))
-        return V
+        return V, values
 
     def improvement(self, V):
         tmp = np.dot(
@@ -379,29 +397,54 @@ class ValueIteration(object):
         self.policy.update(pi)
 
 
-def policy_iteration(env, policy, discount, theta):
+def policy_iteration(env, policy, discount, theta, k=float('inf')):
     improved = True
+    history = {}
+    i = 0
     while improved:
-        iteration = PolicyIteration(env, policy, discount, theta)
-        V = iteration.evaluation()
+        iteration = PolicyIteration(env, policy, discount, theta, k)
+        V, _V = iteration.evaluation()
+        history[i] = _V
         n = policy.grid.n
         print(V.reshape((n, n)))
         improved = iteration.improvement(V)
+        i += 1
     print(print_policy(policy))
+    return history
 
 
 def value_iteration(env, policy, discount, theta):
     iteration = PolicyIteration(env, policy, discount, theta)
-    V = iteration.evaluation()
+    V, _V = iteration.evaluation()
+    history = {0: _V}
     n = policy.grid.n
     print(V.reshape((n, n)))
     iteration.improvement(V)
 
     print(print_policy(policy))
+    return history
 
 
-def modified_iteration():
-    pass
+def plot_history(iteration, history, prob, size):
+    fig, ax = plt.subplots(1, 2, sharey=True)
+    legend = []
+    for epoch, values in history.items():
+        left, right = zip(*values)
+        legend.append(str(epoch))
+        ax[0].plot(range(len(left)), left)
+        ax[1].plot(range(len(right)), right)
+    ax[0].set_title('Bottom left value')
+    ax[1].set_title('Bottom right value')
+    if iteration != 'value':
+        ax[0].legend(legend)
+        ax[1].legend(legend)
+    fig.savefig(
+        '{}_iteration_{}_{}.png'.format(
+            iteration,
+            str(prob),
+            str(size)
+        )
+    )
 
 
 if __name__ == '__main__':
@@ -412,8 +455,13 @@ if __name__ == '__main__':
     env = Environment(policy, args.prob)
 
     if args.iteration == 'policy':
-        policy_iteration(env, policy, args.discount, args.theta)
+        history = policy_iteration(env, policy, args.discount, args.theta)
+        plot_history('policy', history, args.prob, args.size)
     elif args.iteration == 'value':
-        value_iteration(env, policy, args.discount, args.theta)
+        history = value_iteration(env, policy, args.discount, args.theta)
+        plot_history('value', history, args.prob, args.size)
     else:
-        modified_iteration()
+        if args.k is None:
+            raise Exception("Need to provide argument k for Modified Policy")
+        history = policy_iteration(env, policy, args.discount, args.theta, args.k)
+        plot_history('modified', history, args.prob, args.size)
