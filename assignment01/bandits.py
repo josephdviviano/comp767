@@ -19,17 +19,30 @@ LOGGER = logging.getLogger(os.path.basename(__file__))
 def parse_args():
     parser = argparse.ArgumentParser(description='bla bla bla')
 
-    parser.add_argument('-m', '--mean',     default=[1, 0.8, 0.6, 0.4, 0.2, 0],
-        help='Means of the Gaussian Arms', nargs='*', type=float)
-    parser.add_argument('-v', '--variance', default=0.25,
-        help='Variance for all Gaussian Arms', type=float)
+    parser.add_argument(
+        '-m', '--mean',
+        default=[1, 0.8, 0.6, 0.4, 0.2, 0], nargs='*',
+        help='Means of the Gaussian Arms', type=float
+    )
+
+    parser.add_argument(
+        '-v', '--variance',
+        default=0.25,
+        help='Variance for all Gaussian Arms', type=float
+    )
+
+    parser.add_argument(
+        '-r', '--repeats',
+        default=1000,
+        help="Number of times each run will be repeated.", type=int
+    )
+
+    # hyperparameters controlling exploration/exploitation
     parser.add_argument('-d', '--delta',   default=0.1,  type=float)
     parser.add_argument('-e', '--epsilon', default=0.01, type=float)
     parser.add_argument('-b', '--beta',    default=1,    type=float)
-    parser.add_argument('-r', '--repeats', default=5000, type=int,
-        help="Number of times each run will be repeated.")
-    parser.add_argument("--verbose", action='count',
-        help="increase output verbosity")
+
+    parser.add_argument("--debug", action='count')
 
 
     return(parser.parse_args())
@@ -474,11 +487,12 @@ if __name__ == '__main__':
     args = parse_args()
     print(args)
 
-    if args.verbose == None:
+    if args.debug == None:
         LOGGER.setLevel(logging.INFO)
-    elif args.verbose >= 1:
+    elif args.debug >= 1:
         LOGGER.setLevel(logging.DEBUG)
 
+    # our k-armed bandit is a list of GaussianArm objects
     arms = [GaussianArm(mean, args.variance) for mean in args.mean]
 
     ae = ActionElimination(args.delta, args.epsilon, args.repeats, arms)
