@@ -35,7 +35,7 @@ def parse_args():
 
     parser.add_argument(
         '-r', '--repeats',
-        default=50,
+        default=1000,
         help="Number of times each run will be repeated.", type=int
     )
 
@@ -493,7 +493,7 @@ def plot_rewards(rewards, names, n_steps=1000):
 
     results = np.mean(results, axis=1)
 
-    plt.plot(results.T, alpha=0.5)
+    plt.plot(results.T, alpha=0.75)
     plt.legend(names)
     plt.xlabel('Steps')
     plt.ylabel('Average reward')
