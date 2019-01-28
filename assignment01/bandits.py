@@ -150,6 +150,7 @@ class ActionElimination(object):
         action_set = self.arms
         self.epoch = 1
         decisions = []
+        rewards = []
 
         # Reset all arms.
         for arm in self.arms:
@@ -159,7 +160,7 @@ class ActionElimination(object):
         while len(action_set) > 1:
             for arm in self.arms:
                 if not arm.is_ignored():
-                    arm.pull()
+                    rewards.append(arm.pull())
 
             one_hot = np.zeros(self.k)
 
@@ -200,25 +201,29 @@ class ActionElimination(object):
                     one_hot[j] = 1
             decisions.append(one_hot)
 
-
-        LOGGER.info('action elimination: best arm found = {}'.format(
+        LOGGER.info('Action elimination: best arm found = {}'.format(
             action_set[0].mu_hat))
 
         # return decisions as a matrix
         decisions = np.vstack(decisions)
+        rewards = np.array(rewards)
 
-        return(decisions)
+        return(decisions, rewards)
 
     def run_n(self):
         all_decisions = []
+        all_rewards = []
 
         for i in range(self.r):
-            decisions = self.run()
+            decisions, rewards = self.run()
             all_decisions.append(decisions)
+            all_rewards.append(rewards)
             LOGGER.info('completed {}/{} in {} steps'.format(
-                i, self.r, self.epoch))
+                i+1, self.r, self.epoch))
 
-        plot(all_decisions, self.arms, self.r, 'action elimination')
+        plot_decisions(all_decisions, self.arms, self.r, 'Action elimination')
+
+        return(all_rewards)
 
 
 class UCB(object):
@@ -282,6 +287,7 @@ class UCB(object):
     def run(self):
 
         decisions = []
+        rewards = []
         self.epoch = 1
 
         # initialize all arms
@@ -305,19 +311,30 @@ class UCB(object):
 
             # UCB criteria for selecting best arm from At_scores
             ht = np.argmax(At_scores)
-            self.arms[ht].pull() # sample arm
+
+            # sample arm, store reward
+            rewards.append(self.arms[ht].pull())
+
             self.Ti[ht] += 1
             one_hot[ht] = 1
 
             # LUCB action (pulls next best arm)
             if self.mode == 'lucb':
+
+                # TODO: unclear if this look is strictly required or if we can
+                #       just reuse the At_scores vector calculated above
                 for i, arm in enumerate(self.arms):
                     numer = np.log(self.epoch)
                     denom = self.Ti[i]
                     At_scores[i] = arm.mu_hat + (self._C(i) * np.sqrt(numer/denom))
+
                 At_scores[ht] = -1 # remove ht from consideration
                 lt = np.argmax(At_scores)
-                self.arms[lt].pull() # sample additional arm
+
+                # sample additional arm, store reward
+                rewards.append(self.arms[lt].pull())
+
+                # if this is enabled, the algorithm never converges
                 #self.Ti[lt] += 1
                 one_hot[lt] = 1
 
@@ -328,7 +345,8 @@ class UCB(object):
 
         # return best arm in Ti
         ht = np.argmax(self.Ti)
-        LOGGER.info('UCB: best arm found = {}'.format(self.arms[ht].mu_hat))
+        LOGGER.info('UCB: mode={}, best arm found = {}'.format(
+            self.mode, self.arms[ht].mu_hat))
 
         # TODO: again, and ugly hack to make the figures look more like the
         #       paper, i.e., we're just running the algorithm longer than
@@ -341,32 +359,37 @@ class UCB(object):
         # return decisions as a matrix
         decisions = np.vstack(decisions)
 
-        return(decisions)
+        return(decisions, rewards)
 
     def run_n(self):
         all_decisions = []
+        all_rewards = []
 
         for i in range(self.r):
-            decisions = self.run()
+            decisions, rewards = self.run()
             all_decisions.append(decisions)
+            all_rewards.append(rewards)
             LOGGER.info('completed {}/{} in {} steps'.format(
-                i, self.r, self.epoch))
+                i+1, self.r, self.epoch))
 
         if self.mode == 'lucb':
             name = 'LUCB'
         else:
             name = 'UCB'
 
-        plot(all_decisions, self.arms, self.r, name)
+        plot_decisions(all_decisions, self.arms, self.r, name)
+
+        return(all_rewards)
 
 
-def plot(decisions_list, arms, repeats, name):
+def plot_decisions(decisions_list, arms, repeats, name):
         """
-        decisions is a n_repeats long list of (n_iterations x n_arms) one_hot
-        encoded vectors denoting the arms pulled at each iteration of the
-        algorithm. This converts these matrices into a single matrix (equal to
-        the size of the largest matrix in the original list), which contains
-        the probability of each arm being pulled during
+        decisions_list is a n_repeats long list of (n_iterations x n_arms)
+        one_hot encoded vectors denoting the arms pulled at each iteration of
+        the algorithm. This converts these matrices into a single matrix (equal
+        to the size of the largest matrix in the original list), which contains
+        the probability of each arm being pulled during that step (in units of
+        H1).
         """
         # the H1 unit is the dominant term in the sample complexity of
         # best arm identification problems.
@@ -421,6 +444,31 @@ def plot(decisions_list, arms, repeats, name):
         plt.savefig('img/{}.svg'.format(name))
         plt.close('all')
 
+
+def plot_rewards(rewards, names, n_pulls=1000):
+    """
+    Plots the average reward over the first n steps.
+    """
+    n_experiments = len(rewards)
+    n_repeats = len(rewards[0])
+
+    results = np.zeros((n_experiments, n_repeats, n_pulls))
+    for i, experiment in enumerate(rewards):
+        for j in range(n_repeats):
+
+            results[i, j, :] = experiment[j][:n_pulls]
+
+    results = np.mean(results, axis=1)
+
+    plt.plot(results.T)
+    plt.legend(names)
+    plt.xlabel('Steps')
+    plt.ylabel('Average reward')
+    plt.ylim([0, 1.5])
+    plt.savefig('img/avg_reward.jpg')
+    plt.savefig('img/avg_reward.svg')
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -441,4 +489,8 @@ if __name__ == '__main__':
 
     lucb = UCB(args.beta, args.delta, args.epsilon, args.repeats, arms, mode='lucb')
     lucb_results = lucb.run_n()
+
+    plot_rewards([ae_results, ucb_results, lucb_results],
+                 ['Action elimination', 'UCB', 'LUCB'], n_pulls=1000)
+
 
