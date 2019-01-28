@@ -16,6 +16,8 @@ logging.basicConfig(level=logging.INFO,
 LOGGER = logging.getLogger(os.path.basename(__file__))
 
 
+N_DUMMY = 1000
+
 def parse_args():
     parser = argparse.ArgumentParser(description='bla bla bla')
 
@@ -33,7 +35,7 @@ def parse_args():
 
     parser.add_argument(
         '-r', '--repeats',
-        default=1000,
+        default=50,
         help="Number of times each run will be repeated.", type=int
     )
 
@@ -169,25 +171,35 @@ class ActionElimination(object):
         for arm in self.arms:
             arm.reset()
 
-        # Pull arm once per 'epoch'.
+        # Pull each non-ignored arm once per 'epoch'.
         while len(action_set) > 1:
+
+            reward = 0
+            n_pulls = 0
+
             for arm in self.arms:
                 if not arm.is_ignored():
-                    rewards.append(arm.pull())
+                    reward += arm.pull()
+                    n_pulls += 1
 
+            # Store mean reward per epoch.
+            reward /= n_pulls
+            rewards.append(reward)
+
+            # Stores the decisions per arm (to be plotted later).
             one_hot = np.zeros(self.k)
 
             # C controls how confident we are in our estimates
             #C = 2*self._U()
             C = self._C()
 
-            # Getting the best arm among the ones left
+            # Getting the best arm among the ones left.
             ref_arm = action_set[
                 np.argmax([arm.mu_hat + C for arm in action_set])
             ]
 
-            LOGGER.debug('t={}: ref_mu={}, k_remaining={}/{}, C={}'.format(
-                self.epoch, ref_arm.mu_hat, len(action_set), self.k, C)
+            LOGGER.debug('t={}: mean_reward={}, ref_mu={}, k_remaining={}/{}, C={}'.format(
+                self.epoch, reward, ref_arm.mu_hat, len(action_set), self.k, C)
             )
 
             for i, arm in enumerate(self.arms):
@@ -207,7 +219,7 @@ class ActionElimination(object):
         # TODO: we have some repeated code here and we are doing ugly things
         #       just to make our plots look more like the paper...
         #       should be removed... not ideal.
-        for i in range(1000):
+        for i in range(N_DUMMY):
             one_hot = np.zeros(self.k)
             for j, arm in enumerate(self.arms):
                 if not arm.is_ignored():
@@ -313,6 +325,9 @@ class UCB(object):
         # continue until Ti is greater than Ts for all indices
         while not self._stoppping_criteria(self.Ti):
 
+            reward = 0
+            n_pulls = 0
+
             At_scores = np.zeros(self.k)
             one_hot = np.zeros(self.k)
 
@@ -326,8 +341,8 @@ class UCB(object):
             ht = np.argmax(At_scores)
 
             # sample arm, store reward
-            rewards.append(self.arms[ht].pull())
-
+            reward += self.arms[ht].pull()
+            n_pulls += 1
             self.Ti[ht] += 1
             one_hot[ht] = 1
 
@@ -345,15 +360,20 @@ class UCB(object):
                 lt = np.argmax(At_scores)
 
                 # sample additional arm, store reward
-                rewards.append(self.arms[lt].pull())
+                reward += self.arms[lt].pull()
+                n_pulls += 1
 
                 # if this is enabled, the algorithm never converges
                 #self.Ti[lt] += 1
                 one_hot[lt] = 1
 
+            # Store average reward per epoch.
+            reward /= n_pulls
+
             self.epoch += 1
 
-            # save pull(s)
+            # Save average reward and pull(s)
+            rewards.append(reward)
             decisions.append(one_hot)
 
         # return best arm in Ti
@@ -364,7 +384,7 @@ class UCB(object):
         # TODO: again, and ugly hack to make the figures look more like the
         #       paper, i.e., we're just running the algorithm longer than
         #       would normally be defined by the stopping criteria...
-        for i in range(1000):
+        for i in range(N_DUMMY):
             one_hot = np.zeros(self.k)
             one_hot[ht] = 1
             decisions.append(one_hot)
@@ -458,26 +478,26 @@ def plot_decisions(decisions_list, arms, repeats, name):
         plt.close('all')
 
 
-def plot_rewards(rewards, names, n_pulls=1000):
+def plot_rewards(rewards, names, n_steps=1000):
     """
     Plots the average reward over the first n steps.
     """
     n_experiments = len(rewards)
     n_repeats = len(rewards[0])
 
-    results = np.zeros((n_experiments, n_repeats, n_pulls))
+    results = np.zeros((n_experiments, n_repeats, n_steps))
     for i, experiment in enumerate(rewards):
         for j in range(n_repeats):
 
-            results[i, j, :] = experiment[j][:n_pulls]
+            results[i, j, :] = experiment[j][:n_steps]
 
     results = np.mean(results, axis=1)
 
-    plt.plot(results.T)
+    plt.plot(results.T, alpha=0.5)
     plt.legend(names)
     plt.xlabel('Steps')
     plt.ylabel('Average reward')
-    plt.ylim([0, 1.5])
+    plt.ylim([0, 1.2])
     plt.savefig('img/avg_reward.jpg')
     plt.savefig('img/avg_reward.svg')
 
@@ -505,6 +525,6 @@ if __name__ == '__main__':
     lucb_results = lucb.run_n()
 
     plot_rewards([ae_results, ucb_results, lucb_results],
-                 ['Action elimination', 'UCB', 'LUCB'], n_pulls=1000)
+                 ['Action elimination', 'UCB', 'LUCB'], n_steps=1000)
 
 
