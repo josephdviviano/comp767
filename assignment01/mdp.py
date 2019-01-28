@@ -1,5 +1,4 @@
-
-
+#!/usr/bin/env python
 """
 Implement and compare empirically the performance of value iteration,
 policy iteration and modified policy iteration. Modified policy iteration is a
@@ -23,13 +22,12 @@ values of p (0.9 and 0.7) and with two different sizes of gird
 """
 
 from collections import namedtuple
-import numpy as np
 from enum import Enum
-import argparse
 from tqdm import tqdm
+import argparse
 import matplotlib.pyplot as plt
+import numpy as np
 plt.style.use('ggplot')
-
 
 State = namedtuple('State', ['i', 'j', 'reward', 'terminal'])
 
@@ -155,12 +153,19 @@ class Grid(object):
 
         for i in range(n):
             for j in range(n):
+
+                # Reward of 1 in upper left corner.
                 if i == 0 and j == 0:
                     state = State(i, j, 1, True)
+
+                # Reward of 10 in upper right corner.
                 elif i == 0 and j == (n - 1):
                     state = State(i, j, 10, True)
+
+                # Zero reward everywhere else.
                 else:
                     state = State(i, j, 0, False)
+
                 self._grid[i, j] = state
 
     @property
@@ -219,10 +224,12 @@ class Policy(object):
         #  If we want to be more dynamic we should check how many actions
         # are actually allowed across all states
         pi = np.zeros((len(self), 4))
+
         #  Iterating of the grid to make sure we always iteration the same way
         for i, state in enumerate(self.grid):
             for action, prob in self[state].items():
                 pi[i, action.value] = prob
+
         return pi
 
     def update(self, pi):
@@ -250,14 +257,18 @@ class Environment(object):
         # If we want to be a bit more dynamic we should check how many
         # action the policy allows.
         t = np.zeros((k, k, 4))
+
         # For every possible state s
         for state, i in self._state_idx.items():
+
             # For every allowed action starting from state s
             neighbours = self._grid.neighbours(state)
             allowed_action = self.policy[state]
             num_actions = len(allowed_action)
+
             for action, action_prob in allowed_action.items():
                 k = action.value
+
                 for _action in allowed_action:
                     state_prime = neighbours[_action]
                     j = self._state_idx[state_prime]
@@ -266,6 +277,7 @@ class Environment(object):
                     # probability p
                     if action == _action:
                         t[i, j, k] += self.p * action_prob
+
                     # or get to a random direction with probability (1 - p)
                     else:
                         # The random direction is encoded by dividing (1 - p)
@@ -457,11 +469,15 @@ if __name__ == '__main__':
     if args.iteration == 'policy':
         history = policy_iteration(env, policy, args.discount, args.theta)
         plot_history('policy', history, args.prob, args.size)
+
     elif args.iteration == 'value':
         history = value_iteration(env, policy, args.discount, args.theta)
         plot_history('value', history, args.prob, args.size)
+
     else:
         if args.k is None:
             raise Exception("Need to provide argument k for Modified Policy")
         history = policy_iteration(env, policy, args.discount, args.theta, args.k)
         plot_history('modified', history, args.prob, args.size)
+
+
