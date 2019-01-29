@@ -24,6 +24,7 @@ values of p (0.9 and 0.7) and with two different sizes of gird
 from collections import namedtuple
 from enum import Enum
 from tqdm import tqdm
+import json
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
@@ -427,7 +428,6 @@ def policy_iteration(env, policy, discount, theta, k=float('inf')):
 
 
 def value_iteration(env, policy, discount, theta):
-    #iteration = PolicyIteration(env, policy, discount, theta)
     iteration = ValueIteration(env, policy, discount, theta)
     V, _V = iteration.evaluation()
     history = {0: _V}
@@ -440,7 +440,7 @@ def value_iteration(env, policy, discount, theta):
 
 
 def plot_history(iteration, history, prob, size):
-    fig, ax = plt.subplots(1, 2, sharey=True)
+    fig, ax = plt.subplots(1, 2, sharey=True, figsize=(6, 3))
     legend = []
 
     for epoch, values in history.items():
@@ -482,3 +482,6 @@ if __name__ == '__main__':
         history = value_iteration(env, policy, args.discount, args.theta)
         plot_history('value', history, args.prob, args.size)
 
+    fp = "{}_{}_{}.json".format(args.iteration, int(100 * args.prob), args.size)
+    with open(fp, 'w') as f:
+        json.dump(history, f)
