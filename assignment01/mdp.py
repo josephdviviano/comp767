@@ -317,6 +317,7 @@ class PolicyIteration(object):
         n = self.policy.grid.n
         values = []
         while delta > self.theta and epoch < self.k:
+            print('epoch = {}'.format(epoch))
             # Saving values of bottom left and right corner
             # for plotting purposes
             _V = V.reshape((n, n))
@@ -426,7 +427,8 @@ def policy_iteration(env, policy, discount, theta, k=float('inf')):
 
 
 def value_iteration(env, policy, discount, theta):
-    iteration = PolicyIteration(env, policy, discount, theta)
+    #iteration = PolicyIteration(env, policy, discount, theta)
+    iteration = ValueIteration(env, policy, discount, theta)
     V, _V = iteration.evaluation()
     history = {0: _V}
     n = policy.grid.n
@@ -440,22 +442,22 @@ def value_iteration(env, policy, discount, theta):
 def plot_history(iteration, history, prob, size):
     fig, ax = plt.subplots(1, 2, sharey=True)
     legend = []
+
     for epoch, values in history.items():
         left, right = zip(*values)
         legend.append(str(epoch))
         ax[0].plot(range(len(left)), left)
         ax[1].plot(range(len(right)), right)
+
     ax[0].set_title('Bottom left value')
     ax[1].set_title('Bottom right value')
+
     if iteration != 'value':
         ax[0].legend(legend)
         ax[1].legend(legend)
-    fig.savefig(
-        '{}_iteration_{}_{}.png'.format(
-            iteration,
-            str(prob),
-            str(size)
-        )
+
+    fig.savefig('img/{}_iteration_{}_{}.png'.format(
+        iteration, str(prob), str(size))
     )
 
 
@@ -470,14 +472,13 @@ if __name__ == '__main__':
         history = policy_iteration(env, policy, args.discount, args.theta)
         plot_history('policy', history, args.prob, args.size)
 
-    elif args.iteration == 'value':
-        history = value_iteration(env, policy, args.discount, args.theta)
-        plot_history('value', history, args.prob, args.size)
-
-    else:
+    elif args.iteration == 'modified':
         if args.k is None:
             raise Exception("Need to provide argument k for Modified Policy")
         history = policy_iteration(env, policy, args.discount, args.theta, args.k)
-        plot_history('modified', history, args.prob, args.size)
+        plot_history('modified policy', history, args.prob, args.size)
 
+    elif args.iteration == 'value':
+        history = value_iteration(env, policy, args.discount, args.theta)
+        plot_history('value', history, args.prob, args.size)
 
