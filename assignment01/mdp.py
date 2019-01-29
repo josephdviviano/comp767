@@ -27,6 +27,7 @@ import numpy as np
 from enum import Enum
 import argparse
 from tqdm import tqdm
+import json
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
@@ -426,7 +427,7 @@ def value_iteration(env, policy, discount, theta):
 
 
 def plot_history(iteration, history, prob, size):
-    fig, ax = plt.subplots(1, 2, sharey=True)
+    fig, ax = plt.subplots(1, 2, sharey=True, figsize=(6, 3))
     legend = []
     for epoch, values in history.items():
         left, right = zip(*values)
@@ -441,7 +442,7 @@ def plot_history(iteration, history, prob, size):
     fig.savefig(
         '{}_iteration_{}_{}.png'.format(
             iteration,
-            str(prob),
+            str(int(prob * 100)),
             str(size)
         )
     )
@@ -465,3 +466,7 @@ if __name__ == '__main__':
             raise Exception("Need to provide argument k for Modified Policy")
         history = policy_iteration(env, policy, args.discount, args.theta, args.k)
         plot_history('modified', history, args.prob, args.size)
+
+    fp = "{}_{}_{}.json".format(args.iteration, int(100 * args.prob), args.size)
+    with open(fp, 'w') as f:
+        json.dump(history, f)
