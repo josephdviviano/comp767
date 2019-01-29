@@ -65,7 +65,7 @@ def parse_args():
 
     parser.add_argument(
         '-d', '--discount',
-        default=1.0,
+        default=0.9,
         type=float
     )
 
@@ -482,6 +482,6 @@ if __name__ == '__main__':
         history = value_iteration(env, policy, args.discount, args.theta)
         plot_history('value', history, args.prob, args.size)
 
-    fp = "{}_{}_{}.json".format(args.iteration, int(100 * args.prob), args.size)
+    fp = "data/{}_{}_{}.json".format(args.iteration, int(100 * args.prob), args.size)
     with open(fp, 'w') as f:
         json.dump(history, f)
