@@ -211,22 +211,28 @@ def softmax(action_values, temperature=1.0, sample=True):
 if __name__ == "__main__":
     args = parse_args()
 
-    steps = np.zeros((args.segments, args.runs))
-    rewards = np.zeros((args.segments, args.runs))
-    for run in tqdm.trange(args.runs, desc="Run"):
-        agent = Agent(
-            method=args.method,
-            alpha=args.alpha,
-            temperature=args.temperature,
-            max_steps=args.steps,
-            gamma=args.gamma
-        )
-        for segment in tqdm.trange(args.segments, desc="Segment"):
-            for episode in range(10):
-                agent.run_episode()
-            step, reward = agent.run_greedy_episode()
-            steps[segment, run] = step
-            rewards[segment, run] = reward
+    alphas = np.linspace(0.01, 1, 100)
+    temps = np.array([0.1, 1.0, 10])
 
-    print(steps.mean(axis=1))
-    print(rewards.mean(axis=1))
+    steps = np.zeros((len(alphas), len(temps), args.segments, args.runs))
+    rewards = np.zeros_like(steps)
+
+    for i, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
+        for j, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
+            for run in tqdm.trange(args.runs, desc="Run"):
+                agent = Agent(
+                    method=args.method,
+                    alpha=alpha,
+                    temperature=temp,
+                    max_steps=args.steps,
+                    gamma=args.gamma
+                )
+                for segment in tqdm.trange(args.segments, desc="Segment"):
+                    for episode in range(10):
+                        agent.run_episode()
+                    step, reward = agent.run_greedy_episode()
+                    steps[i, j, segment, run] = step
+                    rewards[i, j, segment, run] = reward
+
+    np.save(args.save / "steps.npy", steps)
+    np.save(args.save / "rewards.npy", rewards)
