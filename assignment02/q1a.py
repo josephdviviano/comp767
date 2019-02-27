@@ -2,6 +2,86 @@
 
 import numpy as np
 import gym
+import argparse
+from pathlib import Path
+import os
+import tqdm
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--runs",
+        help="Number of independant runs",
+        type=int,
+        default=10
+    )
+
+    parser.add_argument(
+        "--segments",
+        help=(
+            "Number of segments. Each segment there are 10 episodes "
+            "of training, followed by 1 episode in which you simply "
+            "run the optimal policy so far."
+        ),
+        type=int,
+        default=100
+    )
+
+    parser.add_argument(
+        "--steps",
+        help=(
+            "Maximum number of steps in an episode."
+        ),
+        type=int,
+        default=100
+    )
+
+    parser.add_argument(
+        "--temperature",
+        help=(
+            "Temperature value that will control the exploration. "
+            "Higher value will increase exploration. Lower value "
+            "will increase exploitation."
+        ),
+        type=float,
+        default=1.0
+    )
+
+    parser.add_argument(
+        "--alpha",
+        help="Learning rate",
+        type=float,
+        default=0.1
+    )
+
+    parser.add_argument(
+        "--gamma",
+        help="Discount factor",
+        type=float,
+        default=1.0
+    )
+
+    parser.add_argument(
+        "-s", "--save",
+        help="Path where to save all the files",
+        default=Path('.'),
+        type=Path
+    )
+
+    parser.add_argument(
+        "-m", "--method",
+        help="Method to use",
+        default="sarsa",
+        choices=["sarsa", "expected_sarsa", "q_learning"]
+    )
+
+    args = parser.parse_args()
+    if args.temperature <= 0:
+        raise ValueError("Temperature needs to be greater than zero.")
+    os.makedirs(args.save, exist_ok=True)
+    return args
 
 
 class Agent(object):
@@ -101,6 +181,23 @@ class Agent(object):
 
             state = s_prime
 
+    def run_greedy_episode(self):
+        step = 0
+        reward = 0
+
+        state = self.env.reset()
+        done = False
+        step = 0
+
+        while not done:
+            action = np.argmax(self.q_table[state])
+            state, r, done, _ = self.env.step(action)
+            reward += r
+            step += 1
+            if step == self.max_steps:
+                done = True
+        return step, reward
+
 
 def softmax(action_values, temperature=1.0, sample=True):
     exp_val = np.exp(action_values) / temperature
@@ -109,3 +206,27 @@ def softmax(action_values, temperature=1.0, sample=True):
         return np.where(probs.cumsum() > np.random.rand())[0][0]
     else:
         return probs
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    steps = np.zeros((args.segments, args.runs))
+    rewards = np.zeros((args.segments, args.runs))
+    for run in tqdm.trange(args.runs, desc="Run"):
+        agent = Agent(
+            method=args.method,
+            alpha=args.alpha,
+            temperature=args.temperature,
+            max_steps=args.steps,
+            gamma=args.gamma
+        )
+        for segment in tqdm.trange(args.segments, desc="Segment"):
+            for episode in range(10):
+                agent.run_episode()
+            step, reward = agent.run_greedy_episode()
+            steps[segment, run] = step
+            rewards[segment, run] = reward
+
+    print(steps.mean(axis=1))
+    print(rewards.mean(axis=1))
