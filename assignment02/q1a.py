@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 
 import numpy as np
 import gym
@@ -211,7 +211,9 @@ def softmax(action_values, temperature=1.0, sample=True):
 if __name__ == "__main__":
     args = parse_args()
 
-    alphas = np.linspace(0.01, 1, 100)
+    N_EPISODES = 10
+
+    alphas = np.linspace(0.01, 0.5, 1)
     temps = np.array([0.1, 1.0, 10])
 
     steps = np.zeros((len(alphas), len(temps), args.segments, args.runs))
@@ -220,6 +222,7 @@ if __name__ == "__main__":
     for i, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
         for j, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
             for run in tqdm.trange(args.runs, desc="Run"):
+
                 agent = Agent(
                     method=args.method,
                     alpha=alpha,
@@ -227,12 +230,18 @@ if __name__ == "__main__":
                     max_steps=args.steps,
                     gamma=args.gamma
                 )
+
                 for segment in tqdm.trange(args.segments, desc="Segment"):
-                    for episode in range(10):
+
+                    for episode in range(N_EPISODES):
                         agent.run_episode()
+
                     step, reward = agent.run_greedy_episode()
                     steps[i, j, segment, run] = step
                     rewards[i, j, segment, run] = reward
 
     np.save(args.save / "steps.npy", steps)
     np.save(args.save / "rewards.npy", rewards)
+
+
+
