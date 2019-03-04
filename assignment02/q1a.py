@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 
 import numpy as np
 import gym
@@ -24,15 +24,6 @@ def parse_args():
             "Number of segments. Each segment there are 10 episodes "
             "of training, followed by 1 episode in which you simply "
             "run the optimal policy so far."
-        ),
-        type=int,
-        default=100
-    )
-
-    parser.add_argument(
-        "--steps",
-        help=(
-            "Maximum number of steps in an episode."
         ),
         type=int,
         default=100
@@ -112,91 +103,87 @@ class Agent(object):
             (self.env.observation_space.n, num_actions)
         )
 
-    def run_episode(self):
+    def run_episode(self, greedy=False):
         #  TODO ensure that the starting and end location of the passenger
         #  are random
 
         # Initial state for the episode. State is a number, so we can
         # use it to index our q_table and policy
-        state = self.env.reset()
+        episode_reward = 0
+        episode_errors = []
         done = False
-        step = 0
+
+        state = self.env.reset()
+
+        # At worst, will terminate at env._max_episode_steps.
         while not done:
-            # take action according to our policy
-            action = softmax(self.q_table[state], self.temperature)
-            # Take action in the environment
+
+            if greedy:
+                action = np.argmax(self.q_table[state])
+            else:
+                # Take action according to our policy.
+                action = softmax(self.q_table[state], self.temperature)
+
+
             s_prime, reward, done, _ = self.env.step(action)
 
             if self.method == 'q_learning':
-                # Q learning takes the max action from state s_prime
-                # We can potentially have multiple actions with the same
-                # max values. But no indication is given as to how to break
-                # equality so we take the first one returned by argmax
-                a_prime = self.q[s_prime].argmax()
-
-                # update the q_table
-                # First calculate the error
-                error = reward
-                error += self.gamma * self.q_table[s_prime, a_prime]
-                error -= self.q_table[state, action]
-                # Then update the current estimate of Q(s, a) by updating
-                # in the direction of the error with a small step
-                self.q_table[state, action] = self.q_table[state, action] + self.alpha * error
+                error = self.q_learning_error(s_prime, state, reward, action)
 
             elif self.method == 'sarsa':
-                # Sarsa samples again from the policy to get action_prime
-                a_prime = softmax(self.q_table[s_prime], self.temperature)
-
-                # update the q_table
-                # First calculate the error
-                error = reward
-                error += self.gamma * self.q_table[s_prime, a_prime]
-                error -= self.q_table[state, action]
-                # Then update the current estimate of Q(s, a) by updating
-                # in the direction of the error with a small step
-                self.q_table[state, action] = self.q_table[state, action] + self.alpha * error
+                error = self.sarsa_error(s_prime, state, reward, action)
 
             elif self.method == 'expected_sarsa':
-                # Expected Sarsa takes a weighted average of all possible
-                # action from state s_prime
-                probs = softmax(
-                    self.q_table[s_prime],
-                    self.temperature,
-                    sample=False
-                )
-                expectation = (probs * self.q_table[s_prime]).sum()
+                error = self.expected_sarsa_error(s_prime, state, reward, action)
 
-                # update the q_table
-                # First calculate the error
-                error = reward
-                error += self.gamma * expectation
-                error -= self.q_table[state, action]
-                # Then update the current estimate of Q(s, a) by updating
-                # in the direction of the error with a small step
+            episode_reward += reward
+            episode_errors.append(error)
+
+            # Don't update policy during greedy runs.
+            if not greedy:
+                # Update estimate of Q(s, a) using a small step size on error.
                 self.q_table[state, action] = self.q_table[state, action] + self.alpha * error
 
-            step += 1
-            if step >= self.max_steps:
-                done = True
-
+            # Set t+1 to t, for the next loop.
             state = s_prime
 
-    def run_greedy_episode(self):
-        step = 0
-        reward = 0
+        rms_error = np.sqrt(np.mean( np.array(episode_errors)**2 ))
 
-        state = self.env.reset()
-        done = False
-        step = 0
+        return(rms_error, reward)
 
-        while not done:
-            action = np.argmax(self.q_table[state])
-            state, r, done, _ = self.env.step(action)
-            reward += r
-            step += 1
-            if step == self.max_steps:
-                done = True
-        return step, reward
+    def q_learning_error(self, s_prime, state, reward, action):
+        """Q learning takes the max action from state s_prime."""
+        # Tiebreak actions by taking the first.
+        a_prime = self.q[s_prime].argmax()
+
+        error = reward
+        error += self.gamma * self.q_table[s_prime, a_prime]
+        error -= self.q_table[state, action]
+
+        return(error)
+
+    def sarsa_error(self, s_prime, state, reward, action):
+        """Sarsa samples again from the policy to get a_prime."""
+        a_prime = softmax(self.q_table[s_prime], self.temperature)
+
+        error = reward
+        error += self.gamma * self.q_table[s_prime, a_prime]
+        error -= self.q_table[state, action]
+
+        return(error)
+
+    def expected_sarsa_error(self, s_prime, state, reward, action):
+        """
+        Takes a weighted average of all possible action from state s_prime.
+        """
+        probs = softmax(self.q_table[s_prime], self.temperature, sample=False)
+        expectation = (probs * self.q_table[s_prime]).sum()
+
+        error = reward
+        error += self.gamma * expectation
+        error -= self.q_table[state, action]
+
+        return(error)
 
 
 def softmax(action_values, temperature=1.0, sample=True):
@@ -211,28 +198,36 @@ def softmax(action_values, temperature=1.0, sample=True):
 if __name__ == "__main__":
     args = parse_args()
 
-    alphas = np.linspace(0.01, 1, 100)
+    N_EPISODES = 10
+
+    alphas = np.array([0.01, 0.5, 0.9])
     temps = np.array([0.1, 1.0, 10])
 
-    steps = np.zeros((len(alphas), len(temps), args.segments, args.runs))
-    rewards = np.zeros_like(steps)
+    errors = np.zeros((len(alphas), len(temps), args.segments, args.runs))
+    rewards = np.zeros_like(errors)
 
     for i, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
         for j, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
             for run in tqdm.trange(args.runs, desc="Run"):
+
                 agent = Agent(
                     method=args.method,
                     alpha=alpha,
                     temperature=temp,
-                    max_steps=args.steps,
                     gamma=args.gamma
                 )
+
                 for segment in tqdm.trange(args.segments, desc="Segment"):
-                    for episode in range(10):
-                        agent.run_episode()
-                    step, reward = agent.run_greedy_episode()
-                    steps[i, j, segment, run] = step
+
+                    for episode in range(N_EPISODES):
+                        _, _ = agent.run_episode()
+
+                    error, reward = agent.run_episode(greedy=True)
+                    errors[i, j, segment, run] = error
                     rewards[i, j, segment, run] = reward
 
-    np.save(args.save / "steps.npy", steps)
+    np.save(args.save / "errors.npy", errors)
     np.save(args.save / "rewards.npy", rewards)
+
+
+
