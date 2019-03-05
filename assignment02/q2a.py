@@ -83,7 +83,74 @@ def parse_args():
     return args
 
 
+class Agent(object):
+    """
+    Agent running in the environment `Taxi-V2` from OpenAI.
+    """
+
+    def __init__(
+        self,
+        method,
+        temperature=1.0,
+        max_steps=100,
+        alpha=0.1,
+        gamma=0.9,
+        lamb=0.9
+    ):
+        super(Agent, self).__init__()
+        if method not in ['sarsa', 'expected_sarsa', 'q_learning']:
+            raise ValueError("Method not supported")
+
+        self.method = method
+        self.temperature = temperature
+        self.max_steps = max_steps
+        self.alpha = alpha
+        self.gamma = gamma
+        self.lamb = lamb
+        self.env = gym.make("Pendulum-v0")
+        num_actions = self.env.action_space.n
+
+        # THESE COME FROM THE TILE-CODING (10x10 grid!)
+        self.eligibility = np.zeros(N_STATES)
+        self.q_table = np.zeros(
+            (self.env.observation_space.n, num_actions)
+        )
+
+    def run_episode(self):
+        # Initial state for the episode. State is a number, so we can
+        # use it to index our q_table and policy
+        episode_reward = 0
+        episode_errors = []
+        done = False
+
+        state = self.env.reset()
+
+        # At worst, will terminate at env._max_episode_steps.
+        while not done:
+
+            # Take action according to our policy.
+            action = softmax(self.q_table[state], self.temperature)
+
+            s_prime, reward, done, _ = self.env.step(action)
+
+            self.eligibility *= lamb * gamma
+            self.eligibility[state] += 1.0
+
+            # get the td-error and update every state's value estimate
+            # according to their eligibilities.
+            error = reward + self.gamma * self.q_table[new_state] - self.q_table[state]
+            self.state_values = self.q_table + self.alpha * error * self.eligibility
+
+            # Set t+1 to t, for the next loop.
+            state = s_prime
+
+        rms_error = np.sqrt(np.mean( np.array(episode_errors)**2 ))
+
+        return(rms_error, reward)
+
+
 if __name__ == '__main__':
     args = parse_args()
     print(args)
     seeds = list(range(42, 42 + args.runs))
+
