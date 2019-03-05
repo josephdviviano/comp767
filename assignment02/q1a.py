@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "-s", "--save",
         help="Path where to save all the files",
-        default=Path('.'),
+        default=Path('data/'),
         type=Path
     )
 
@@ -123,7 +123,6 @@ class Agent(object):
             else:
                 # Take action according to our policy.
                 action = softmax(self.q_table[state], self.temperature)
-
 
             s_prime, reward, done, _ = self.env.step(action)
 
@@ -200,34 +199,49 @@ if __name__ == "__main__":
 
     N_EPISODES = 10
 
+    methods = ["sarsa", "expected_sarsa", "q_learning"]
     alphas = np.array([0.01, 0.5, 0.9])
     temps = np.array([0.1, 1.0, 10])
 
-    errors = np.zeros((len(alphas), len(temps), args.segments, args.runs))
-    rewards = np.zeros_like(errors)
+    test_errors = np.zeros(
+        (len(methods), len(alphas), len(temps), args.segments, args.runs))
+    test_rewards = np.zeros_like(test_errors)
+    train_errors = np.zeros_like(test_errors)
+    train_rewards = np.zeros_like(test_errors)
 
-    for i, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
-        for j, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
-            for run in tqdm.trange(args.runs, desc="Run"):
+    for i, method in enumerate(tqdm.tqdm(methods, desc="methods")):
+        for j, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
+            for k, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
+                for run in tqdm.trange(args.runs, desc="Run"):
 
-                agent = Agent(
-                    method=args.method,
-                    alpha=alpha,
-                    temperature=temp,
-                    gamma=args.gamma
-                )
+                    agent = Agent(
+                        method=args.method,
+                        alpha=alpha,
+                        temperature=temp,
+                        gamma=args.gamma
+                    )
 
-                for segment in tqdm.trange(args.segments, desc="Segment"):
+                    for segment in tqdm.trange(args.segments, desc="Segment"):
 
-                    for episode in range(N_EPISODES):
-                        _, _ = agent.run_episode()
+                        for episode in range(N_EPISODES):
+                            error, reward = agent.run_episode()
+                            train_errors[i, j, k, segment, run] += error
+                            train_rewards[i, j, k, segment, run] += reward
 
-                    error, reward = agent.run_episode(greedy=True)
-                    errors[i, j, segment, run] = error
-                    rewards[i, j, segment, run] = reward
+                        # Store mean training performance over the episodes.
+                        train_errors[i, j, k, segment, run] /= N_EPISODES
+                        train_rewards[i, j, k, segment, run] /= N_EPISODES
 
-    np.save(args.save / "errors.npy", errors)
-    np.save(args.save / "rewards.npy", rewards)
+                        # Store test performance following greedy policy.
+                        error, reward = agent.run_episode(greedy=True)
+                        test_errors[i, j, k, segment, run] = error
+                        test_rewards[i, j, k, segment, run] = reward
+
+    results = {'train': {'errors': train_errors, 'rewards': train_rewards},
+               'test': {'errors': test_errors, 'rewards': test_rewards}
+    }
+
+    np.save(os.path.join(args.save, "q1a.npy"), results)
 
 
 
