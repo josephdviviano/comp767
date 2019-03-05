@@ -186,12 +186,23 @@ class Agent(object):
 
 
 def softmax(action_values, temperature=1.0, sample=True):
-    exp_val = np.exp(action_values) / temperature
+    """
+    Temperatures < 1 make the distribution encoded by action_values more
+    "peaky", encouraging exploitation. Temperatures > 1 make the distribution
+    more flat, encouraging exploration.
+    """
+    # Numerical stability (remove max after applying temperature).
+    z = action_values / temperature
+    z -= np.max(z)
+
+    exp_val = np.exp(z)
+
     probs = exp_val / exp_val.sum()
+
     if sample:
-        return np.where(probs.cumsum() > np.random.rand())[0][0]
+        return(np.random.choice(len(probs), p=probs))
     else:
-        return probs
+        return(probs)
 
 
 if __name__ == "__main__":
@@ -200,8 +211,8 @@ if __name__ == "__main__":
     N_EPISODES = 10
 
     methods = ["sarsa", "expected_sarsa", "q_learning"]
-    alphas = np.array([0.01, 0.5, 0.9])
-    temps = np.array([0.1, 1.0, 10])
+    alphas = np.array([0.1, 0.25, 0.5])
+    temps = np.array([0.001, 1.0, 1000.0])
 
     test_errors = np.zeros(
         (len(methods), len(alphas), len(temps), args.segments, args.runs))
