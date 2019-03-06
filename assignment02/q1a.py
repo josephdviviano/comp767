@@ -104,27 +104,26 @@ class Agent(object):
         )
 
     def run_episode(self, greedy=False):
-        #  TODO ensure that the starting and end location of the passenger
-        #  are random
+
+        episode_reward = 0
+        done = False
 
         # Initial state for the episode. State is a number, so we can
         # use it to index our q_table and policy
-        episode_reward = 0
-        episode_errors = []
-        done = False
-
         state = self.env.reset()
 
         # At worst, will terminate at env._max_episode_steps.
         while not done:
 
             if greedy:
+                # Tiebreak actions by taking the first.
                 action = np.argmax(self.q_table[state])
             else:
                 # Take action according to our policy.
                 action = softmax(self.q_table[state], self.temperature)
 
             s_prime, reward, done, _ = self.env.step(action)
+            episode_reward += reward
 
             if self.method == 'q_learning':
                 error = self.q_learning_error(s_prime, state, reward, action)
@@ -133,22 +132,17 @@ class Agent(object):
                 error = self.sarsa_error(s_prime, state, reward, action)
 
             elif self.method == 'expected_sarsa':
-                error = self.expected_sarsa_error(s_prime, state, reward, action)
-
-            episode_reward += reward
-            episode_errors.append(error)
+                error = self.exp_sarsa_error(s_prime, state, reward, action)
 
             # Don't update policy during greedy runs.
             if not greedy:
                 # Update estimate of Q(s, a) using a small step size on error.
-                self.q_table[state, action] = self.q_table[state, action] + self.alpha * error
+                self.q_table[state, action] += self.alpha * error
 
             # Set t+1 to t, for the next loop.
             state = s_prime
 
-        rms_error = np.sqrt(np.mean( np.array(episode_errors)**2 ))
-
-        return(rms_error, reward)
+        return(episode_reward)
 
     def q_learning_error(self, s_prime, state, reward, action):
         """Q learning takes the max action from state s_prime."""
@@ -171,7 +165,7 @@ class Agent(object):
 
         return(error)
 
-    def expected_sarsa_error(self, s_prime, state, reward, action):
+    def exp_sarsa_error(self, s_prime, state, reward, action):
         """
         Takes a weighted average of all possible action from state s_prime.
         """
@@ -211,48 +205,40 @@ if __name__ == "__main__":
     N_EPISODES = 10
 
     methods = ["sarsa", "expected_sarsa", "q_learning"]
-    alphas = np.array([0.1, 0.25, 0.5])
-    temps = np.array([0.001, 1.0, 1000.0])
+    alphas = np.array([0.1, 0.3, 0.5, 0.7, 0.9])
+    temps = np.array([0.1, 1.0, 10.0])
 
-    test_errors = np.zeros(
-        (len(methods), len(alphas), len(temps), args.segments, args.runs))
-    test_rewards = np.zeros_like(test_errors)
-    train_errors = np.zeros_like(test_errors)
-    train_rewards = np.zeros_like(test_errors)
+    test_rewards = np.zeros((len(methods),
+                             len(alphas),
+                             len(temps),
+                             args.segments,
+                             args.runs))
+
+    train_rewards = np.zeros_like(test_rewards)
 
     for i, method in enumerate(tqdm.tqdm(methods, desc="methods")):
         for j, alpha in enumerate(tqdm.tqdm(alphas, desc="alpha")):
             for k, temp in enumerate(tqdm.tqdm(temps, desc="temp")):
-                for run in tqdm.trange(args.runs, desc="Run"):
+                for run in tqdm.trange(args.runs, desc="run"):
 
                     agent = Agent(
                         method=args.method,
                         alpha=alpha,
                         temperature=temp,
-                        gamma=args.gamma
-                    )
+                        gamma=args.gamma)
 
-                    for segment in tqdm.trange(args.segments, desc="Segment"):
+                    for segment in tqdm.trange(args.segments, desc="segment"):
 
                         for episode in range(N_EPISODES):
-                            error, reward = agent.run_episode()
-                            train_errors[i, j, k, segment, run] += error
+                            reward = agent.run_episode()
                             train_rewards[i, j, k, segment, run] += reward
 
-                        # Store mean training performance over the episodes.
-                        train_errors[i, j, k, segment, run] /= N_EPISODES
+                        # Store mean training performance over N_EPISODES.
                         train_rewards[i, j, k, segment, run] /= N_EPISODES
 
                         # Store test performance following greedy policy.
-                        error, reward = agent.run_episode(greedy=True)
-                        test_errors[i, j, k, segment, run] = error
+                        reward = agent.run_episode(greedy=True)
                         test_rewards[i, j, k, segment, run] = reward
 
-    results = {'train': {'errors': train_errors, 'rewards': train_rewards},
-               'test': {'errors': test_errors, 'rewards': test_rewards}
-    }
-
+    results = {'train': train_rewards, 'test': test_rewards}
     np.save(os.path.join(args.save, "q1a.npy"), results)
-
-
-
