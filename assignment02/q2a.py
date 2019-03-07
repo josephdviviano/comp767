@@ -90,67 +90,111 @@ class Agent(object):
 
     def __init__(
         self,
-        method,
-        temperature=1.0,
         max_steps=100,
         alpha=0.1,
         gamma=0.9,
-        lamb=0.9
+        trace_decay=0.9,
+        torque_prob=0.9,
+        tilings=5
     ):
         super(Agent, self).__init__()
-        if method not in ['sarsa', 'expected_sarsa', 'q_learning']:
-            raise ValueError("Method not supported")
 
-        self.method = method
-        self.temperature = temperature
         self.max_steps = max_steps
         self.alpha = alpha
         self.gamma = gamma
-        self.lamb = lamb
+        self.trace_decay = trace_decay
+        self.tilings = tilings
         self.env = gym.make("Pendulum-v0")
-        num_actions = self.env.action_space.n
 
         # THESE COME FROM THE TILE-CODING (10x10 grid!)
-        self.eligibility = np.zeros(N_STATES)
-        self.q_table = np.zeros(
-            (self.env.observation_space.n, num_actions)
+        self.eligibility = np.zeros(self.tilings * 10 * 10)
+        self.weights = np.random.uniform(
+            -0.001,
+            0.001,
+            size=self.tilings * 10 * 10
         )
 
     def run_episode(self):
-        # Initial state for the episode. State is a number, so we can
-        # use it to index our q_table and policy
+        def mytiles(angle, velocity):
+            # Rescale angle from (-1, 1) to (0, 10)
+            # Rescale velocity from (-8, 8) to (0, 10)
+            angle_scale_factor = 10.0 / 2
+            velocity_scale_factor = 10.0 / 16
+            return tiles(
+                iht,
+                self.tilings,
+                [
+                    (angle + 1) * angle_scale_factor,
+                    (velocity + 8) * velocity_scale_factor
+                ]
+            )
+
+        def vec_from_tiles(tiles):
+            x = np.zeros(self.tilings * 10 * 10)
+            for idx in tiles:
+                x[idx] = 1
+            return x
+
+        iht = IHT(self.tilings * 10 * 10)
+        eligibility = np.zeros(self.tilings * 10 * 10)
+
         episode_reward = 0
         episode_errors = []
         done = False
 
+        # state[0] = cos(theta), ranges from -1 to 1
+        # state[1] = sin(theta), ranges from -1 to 1
+        # state[2] = angular velocity , ranges from -8 to 8
         state = self.env.reset()
 
         # At worst, will terminate at env._max_episode_steps.
         while not done:
+            # This is the input to the value function
+            x = vec_from_tiles(mytiles(state[0], state[2]))
+
+            # evaluate the fixed policy that produces torque in the same
+            # direction as the current velocity with probability 0.9 and
+            # in the opposite direction with probability 0.1
+            # If velocity is 0, you can torque in a random direction.
+            velocity_direction = np.sign(state[2])
+            rand = np.random.rand()
+            if (state[2] == 0 and rand < 0.5) or rand > 0.9:
+                velocity_direction *= -1
+
+            # TODO figure out how to take an action. For now randomly
+            # Action range from -2 to 2. Sample from 0 to 2 and multiply
+            # by the velocity_direction. This is apply torque in the direction
+            # asked in the question
+            action = np.random.rand(0, 2) * velocity_direction
 
             # Take action according to our policy.
-            action = softmax(self.q_table[state], self.temperature)
-
             s_prime, reward, done, _ = self.env.step(action)
+            episode_reward += reward
 
-            self.eligibility *= lamb * gamma
-            self.eligibility[state] += 1.0
+            # This returns a list of {self.tilings} integers. Those are the
+            # states we want to update
 
-            # get the td-error and update every state's value estimate
-            # according to their eligibilities.
-            error = reward + self.gamma * self.q_table[new_state] - self.q_table[state]
-            self.state_values = self.q_table + self.alpha * error * self.eligibility
+            # ∇v(S,w) = x
+            x_prime = vec_from_tiles(mytiles(s_prime[0], s_prime[2]))
+
+            eligibility *= self.trace_decay * self.gamma
+            eligibility += x
+
+            delta = reward + self.gamma * x_prime - x
+            episode_errors += delta
+
+            # Update the weights
+            self.weights += self.alpha * delta * eligibility
 
             # Set t+1 to t, for the next loop.
             state = s_prime
 
-        rms_error = np.sqrt(np.mean( np.array(episode_errors)**2 ))
+        rms_error = np.sqrt(np.mean(np.array(episode_errors)**2))
 
-        return(rms_error, reward)
+        return(rms_error, episode_reward)
 
 
 if __name__ == '__main__':
     args = parse_args()
     print(args)
     seeds = list(range(42, 42 + args.runs))
-
