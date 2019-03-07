@@ -217,4 +217,5 @@ if __name__ == '__main__':
                     tilings=args.tiling,
                     seed=seeds[run]
                 )
-                agent.run_episode()
+                for episode in tqdm.trange(args.episodes, desc="Episode"):
+                    agent.run_episode()
