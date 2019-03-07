@@ -107,7 +107,7 @@ class Agent(object):
         super(Agent, self).__init__()
         np.random.seed(seed)
 
-        self.alpha = alpha
+        self.alpha = alpha / tilings
         self.gamma = gamma
         self.trace_decay = trace_decay
         self.tilings = tilings
