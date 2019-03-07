@@ -51,11 +51,18 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--lambda",
-        help="Discount factor",
+        "--trace_decay",
+        help="Trace decay",
         default=[0, 0.3, 0.7, 0.9, 1],
         type=float,
         nargs="*"
+    )
+
+    parser.add_argument(
+        "--gamma",
+        help="Discount factor",
+        default=1.0,
+        type=float
     )
 
     parser.add_argument(
@@ -90,16 +97,16 @@ class Agent(object):
 
     def __init__(
         self,
-        max_steps=100,
         alpha=0.1,
         gamma=0.9,
         trace_decay=0.9,
         torque_prob=0.9,
-        tilings=5
+        tilings=5,
+        seed=None
     ):
         super(Agent, self).__init__()
+        np.random.seed(seed)
 
-        self.max_steps = max_steps
         self.alpha = alpha
         self.gamma = gamma
         self.trace_decay = trace_decay
@@ -165,10 +172,10 @@ class Agent(object):
             # Action range from -2 to 2. Sample from 0 to 2 and multiply
             # by the velocity_direction. This is apply torque in the direction
             # asked in the question
-            action = np.random.rand(0, 2) * velocity_direction
+            action = np.random.uniform(0, 2) * velocity_direction
 
             # Take action according to our policy.
-            s_prime, reward, done, _ = self.env.step(action)
+            s_prime, reward, done, _ = self.env.step([action])
             episode_reward += reward
 
             # This returns a list of {self.tilings} integers. Those are the
@@ -182,7 +189,7 @@ class Agent(object):
 
             delta = reward + self.gamma * np.dot(self.weights, x_prime)
             delta -= np.dot(self.weights, x)
-            episode_errors += delta
+            episode_errors.append(delta)
 
             # Update the weights
             self.weights += self.alpha * delta * eligibility
@@ -199,3 +206,15 @@ if __name__ == '__main__':
     args = parse_args()
     print(args)
     seeds = list(range(42, 42 + args.runs))
+    for run in tqdm.trange(args.runs, desc='Run'):
+        for trace_decay in args.trace_decay:
+            for alpha in args.alpha:
+                agent = Agent(
+                    alpha=alpha,
+                    gamma=args.gamma,
+                    trace_decay=trace_decay,
+                    torque_prob=args.torque_prob,
+                    tilings=args.tiling,
+                    seed=seeds[run]
+                )
+                agent.run_episode()
