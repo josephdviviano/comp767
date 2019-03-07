@@ -180,7 +180,8 @@ class Agent(object):
             eligibility *= self.trace_decay * self.gamma
             eligibility += x
 
-            delta = reward + self.gamma * x_prime - x
+            delta = reward + self.gamma * np.dot(self.weights, x_prime)
+            delta -= np.dot(self.weights, x)
             episode_errors += delta
 
             # Update the weights
