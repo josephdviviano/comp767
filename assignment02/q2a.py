@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 import tqdm
 from rlai import IHT, tiles
+from gym.envs.classic_control import PendulumEnv
 
 
 def parse_args():
@@ -90,6 +91,12 @@ def parse_args():
     return args
 
 
+def monkey_reset(self):
+    self.state = np.array([np.pi / 2, 0])
+    self.last_u = None
+    return self._get_obs()
+
+
 class Agent(object):
     """
     Agent running in the environment `Taxi-V2` from OpenAI.
@@ -111,7 +118,9 @@ class Agent(object):
         self.gamma = gamma
         self.trace_decay = trace_decay
         self.tilings = tilings
-        self.env = gym.make("Pendulum-v0")
+        PendulumEnv.reset = monkey_reset
+        self.env = PendulumEnv()
+        self.env.seed(seed)
 
         # THESE COME FROM THE TILE-CODING (10x10 grid!)
         self.eligibility = np.zeros(self.tilings * 10 * 10)
@@ -142,11 +151,11 @@ class Agent(object):
                 x[idx] = 1
             return x
 
-        iht = IHT(self.tilings * 10 * 10)
+        iht = IHT(self.tilings * 11 * 11)
         eligibility = np.zeros(self.tilings * 10 * 10)
 
-        episode_reward = 0
-        episode_errors = []
+        # episode_reward = 0
+        # episode_errors = []
         done = False
 
         # state[0] = cos(theta), ranges from -1 to 1
@@ -155,6 +164,7 @@ class Agent(object):
         state = self.env.reset()
 
         # At worst, will terminate at env._max_episode_steps.
+        i = 0
         while not done:
             # This is the input to the value function
             x = vec_from_tiles(mytiles(state[0], state[2]))
@@ -176,7 +186,7 @@ class Agent(object):
 
             # Take action according to our policy.
             s_prime, reward, done, _ = self.env.step([action])
-            episode_reward += reward
+            # episode_reward += reward
 
             # This returns a list of {self.tilings} integers. Those are the
             # states we want to update
@@ -189,26 +199,33 @@ class Agent(object):
 
             delta = reward + self.gamma * np.dot(self.weights, x_prime)
             delta -= np.dot(self.weights, x)
-            episode_errors.append(delta)
+            # episode_errors.append(delta)
 
             # Update the weights
             self.weights += self.alpha * delta * eligibility
 
             # Set t+1 to t, for the next loop.
             state = s_prime
+            i += 1
+            if i == 200:
+                done = True
 
-        rms_error = np.sqrt(np.mean(np.array(episode_errors)**2))
+        # rms_error = np.sqrt(np.mean(np.array(episode_errors)**2))
 
-        return(rms_error, episode_reward)
+        start_state = vec_from_tiles(mytiles(np.cos(np.pi / 2), 0))
+        return np.dot(self.weights, start_state)
 
 
 if __name__ == '__main__':
     args = parse_args()
     print(args)
     seeds = list(range(42, 42 + args.runs))
+    values = np.zeros(
+        (args.runs, args.episodes, len(args.trace_decay), len(args.alpha))
+    )
     for run in tqdm.trange(args.runs, desc='Run'):
-        for trace_decay in args.trace_decay:
-            for alpha in args.alpha:
+        for i, trace_decay in enumerate(tqdm.tqdm(args.trace_decay, desc="Trace decay")):
+            for j, alpha in enumerate(tqdm.tqdm(args.alpha, desc="Alpha")):
                 agent = Agent(
                     alpha=alpha,
                     gamma=args.gamma,
@@ -218,4 +235,7 @@ if __name__ == '__main__':
                     seed=seeds[run]
                 )
                 for episode in tqdm.trange(args.episodes, desc="Episode"):
-                    agent.run_episode()
+                    start_state_value = agent.run_episode()
+                    values[run, episode, i, j] = start_state_value
+
+    np.save(args.save / "start_state_values.npy", values)
