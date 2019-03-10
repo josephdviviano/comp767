@@ -116,10 +116,8 @@ class Agent(object):
         while not done:
 
             if greedy:
-                # Tiebreak actions by taking the first.
-                action = np.argmax(self.q_table[state])
+                action = randmax(self.q_table[state])
             else:
-                # Take action according to our policy.
                 action = softmax(self.q_table[state], self.temperature)
 
             s_prime, reward, done, _ = self.env.step(action)
@@ -146,8 +144,7 @@ class Agent(object):
 
     def q_learning_error(self, s_prime, state, reward, action):
         """Q learning takes the max action from state s_prime."""
-        # Tiebreak actions by taking the first.
-        a_prime = self.q[s_prime].argmax()
+        a_prime = randmax(self.q[s_prime])
 
         error = reward
         error += self.gamma * self.q_table[s_prime, a_prime]
@@ -197,6 +194,16 @@ def softmax(action_values, temperature=1.0, sample=True):
         return(np.random.choice(len(probs), p=probs))
     else:
         return(probs)
+
+
+def randmax(action_values):
+    """
+    Get the maximum element, breaking ties randomly.
+    """
+    maxes = np.flatnonzero(action_values == np.max(action_values))
+    action = np.random.choice(maxes)
+
+    return(action)
 
 
 if __name__ == "__main__":
