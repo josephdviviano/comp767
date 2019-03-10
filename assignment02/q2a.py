@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import numpy as np
 import gym
 import argparse
@@ -62,7 +64,7 @@ def parse_args():
     parser.add_argument(
         "--gamma",
         help="Discount factor",
-        default=1.0,
+        default=0.9,
         type=float
     )
 
@@ -78,16 +80,8 @@ def parse_args():
         nargs="*"
     )
 
-    parser.add_argument(
-        "-s", "--save",
-        help="Path where to save all the files",
-        default=Path('.'),
-        type=Path
-    )
-
     args = parser.parse_args()
 
-    os.makedirs(args.save, exist_ok=True)
     return args
 
 
@@ -102,118 +96,99 @@ class Agent(object):
     Agent running in the environment `Taxi-V2` from OpenAI.
     """
 
-    def __init__(
-        self,
-        alpha=0.1,
-        gamma=0.9,
-        trace_decay=0.9,
-        torque_prob=0.9,
-        tilings=5,
-        seed=None
-    ):
+    def __init__(self, alpha=0.1, gamma=0.9, trace_decay=0.9,
+                 torque_prob=0.9, tilings=5, seed=1234):
+
         super(Agent, self).__init__()
-        np.random.seed(seed)
 
         self.alpha = alpha / tilings
         self.gamma = gamma
         self.trace_decay = trace_decay
+        self.torque_prob = torque_prob
         self.tilings = tilings
+
         PendulumEnv.reset = monkey_reset
         self.env = PendulumEnv()
         self.env.seed(seed)
+        self.n_tiles = self.tilings * 10 * 10
 
-        # THESE COME FROM THE TILE-CODING (10x10 grid!)
-        self.eligibility = np.zeros(self.tilings * 10 * 10)
-        self.weights = np.random.uniform(
-            -0.001,
-            0.001,
-            size=self.tilings * 10 * 10
-        )
+        np.random.seed(seed)
+        self.eligibility = np.zeros(self.n_tiles)
+        self.weights = np.random.uniform(-0.001, 0.001, size=self.n_tiles)
+
+    def get_tile_positions(self, angle, velocity):
+        """
+        Given an angle, velocity, and hashtable, find the corresponding
+        indices in the tilings. Return a binary vector that is 1 at these
+        locations.
+        """
+        angle_scaler = 10.0 / 2  # rescale from (-1, 1) to (0, 10)
+        velocity_scaler = 10.0 / 16  # rescale from (-8, 8) to (0, 10)
+        state = [(angle + 1) * angle_scaler, (velocity + 8) * velocity_scaler]
+
+        idx = tiles(self.iht, self.tilings, state)
+        x = np.zeros(self.n_tiles)
+        x[idx] = 1
+
+        return(x)
 
     def run_episode(self):
-        def mytiles(angle, velocity):
-            # Rescale angle from (-1, 1) to (0, 10)
-            # Rescale velocity from (-8, 8) to (0, 10)
-            angle_scale_factor = 10.0 / 2
-            velocity_scale_factor = 10.0 / 16
-            return tiles(
-                iht,
-                self.tilings,
-                [
-                    (angle + 1) * angle_scale_factor,
-                    (velocity + 8) * velocity_scale_factor
-                ]
-            )
 
-        def vec_from_tiles(tiles):
-            x = np.zeros(self.tilings * 10 * 10)
-            for idx in tiles:
-                x[idx] = 1
-            return x
-
-        iht = IHT(self.tilings * 11 * 11)
-        eligibility = np.zeros(self.tilings * 10 * 10)
-
-        # episode_reward = 0
-        # episode_errors = []
+        #self.iht = IHT(self.tilings * 11 * 11)
+        self.iht = IHT(self.n_tiles)
+        self.eligibility = np.zeros(self.n_tiles)
         done = False
+        i = 0
 
         # state[0] = cos(theta), ranges from -1 to 1
         # state[1] = sin(theta), ranges from -1 to 1
         # state[2] = angular velocity , ranges from -8 to 8
         state = self.env.reset()
 
-        # At worst, will terminate at env._max_episode_steps.
-        i = 0
         while not done:
-            # This is the input to the value function
-            x = vec_from_tiles(mytiles(state[0], state[2]))
 
-            # evaluate the fixed policy that produces torque in the same
-            # direction as the current velocity with probability 0.9 and
-            # in the opposite direction with probability 0.1
+            # This is the input to the value function
+            x = self.get_tile_positions(state[0], state[2])
+
+            # Fixed policy: produces torque in the same direction as the
+            # current velocity with p=0.9, opposite direction p=0.1.
             # If velocity is 0, you can torque in a random direction.
             velocity_direction = np.sign(state[2])
             rand = np.random.rand()
-            if (state[2] == 0 and rand < 0.5) or rand > 0.9:
+            if (state[2] == 0 and rand < 0.5) or rand > self.torque_prob:
                 velocity_direction *= -1
 
-            # TODO figure out how to take an action. For now randomly
-            # Action range from -2 to 2. Sample from 0 to 2 and multiply
-            # by the velocity_direction. This is apply torque in the direction
-            # asked in the question
+            # Randomly sample torque (action) from [-2 2] (Sample from 0 to 2
+            # and multiply by the velocity_direction).
             action = np.random.uniform(0, 2) * velocity_direction
 
             # Take action according to our policy.
             s_prime, reward, done, _ = self.env.step([action])
-            # episode_reward += reward
 
             # This returns a list of {self.tilings} integers. Those are the
-            # states we want to update
+            # states we want to update.
+            x_prime = self.get_tile_positions(s_prime[0], s_prime[2])
 
-            # ∇v(S,w) = x
-            x_prime = vec_from_tiles(mytiles(s_prime[0], s_prime[2]))
-
-            eligibility *= self.trace_decay * self.gamma
-            eligibility += x
+            # NB: grad of v(S,w) == x b/c this is linear function approx.
+            self.eligibility *= self.trace_decay * self.gamma
+            self.eligibility += x
 
             delta = reward + self.gamma * np.dot(self.weights, x_prime)
             delta -= np.dot(self.weights, x)
-            # episode_errors.append(delta)
 
             # Update the weights
-            self.weights += self.alpha * delta * eligibility
+            self.weights += self.alpha * delta * self.eligibility
 
             # Set t+1 to t, for the next loop.
             state = s_prime
             i += 1
-            if i == 200:
+            if i > 200:
                 done = True
 
-        # rms_error = np.sqrt(np.mean(np.array(episode_errors)**2))
+        # Task is to plot the value of state (0, 0)
+        start_state = self.get_tile_positions(0, 0)
 
-        start_state = vec_from_tiles(mytiles(np.cos(np.pi / 2), 0))
-        return np.dot(self.weights, start_state)
+        return(np.dot(self.weights, start_state))
 
 
 if __name__ == '__main__':
@@ -223,9 +198,11 @@ if __name__ == '__main__':
     values = np.zeros(
         (args.runs, args.episodes, len(args.trace_decay), len(args.alpha))
     )
+
     for run in tqdm.trange(args.runs, desc='Run'):
         for i, trace_decay in enumerate(tqdm.tqdm(args.trace_decay, desc="Trace decay")):
             for j, alpha in enumerate(tqdm.tqdm(args.alpha, desc="Alpha")):
+
                 agent = Agent(
                     alpha=alpha,
                     gamma=args.gamma,
@@ -234,8 +211,9 @@ if __name__ == '__main__':
                     tilings=args.tiling,
                     seed=seeds[run]
                 )
+
                 for episode in tqdm.trange(args.episodes, desc="Episode"):
                     start_state_value = agent.run_episode()
                     values[run, episode, i, j] = start_state_value
 
-    np.save(args.save / "start_state_values.npy", values)
+    np.save("data/q2a.npy", values)
