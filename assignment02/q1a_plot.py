@@ -22,9 +22,11 @@ def plot_hp_comparisons(split):
     LEGEND = ['Temp=0.1', 'Temp=1.0', 'Temp=10']
     XTICKLABELS = [0.1, 0.3, 0.5, 0.7, 0.9]
     XTICKS = range(5)
+    X = range(5)
     YLIM = [-500, 50]
 
-    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
+
     ax1.plot(np.mean(split.best_seg()[0, :, :, :], axis=2))
     ax1.set_ylabel('Return')
     ax1.set_xticks(XTICKS)
@@ -66,7 +68,7 @@ def plot_learning_curves(train, test):
     ALPHA = 2
     TEMP = 1
 
-    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
     ax1.errorbar(X, train.run_stats()[0][0, ALPHA, TEMP, :], train.run_stats()[1][0, ALPHA, TEMP, :])
     ax1.errorbar(X, test.run_stats()[0][0, ALPHA, TEMP, :], test.run_stats()[1][0, ALPHA, TEMP, :])
     ax1.set_ylabel('Return')
