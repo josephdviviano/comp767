@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 
 def plot_learning_curves(data):
 
-    LEGEND = ['1/4', '1/8', '1/16']
-    XTICKS = np.arange(0, 101, 10)
+    LEGEND = ['Alpha=1/4', 'Alpha=1/8', 'Alpha=1/16']
+    XTICKS = np.arange(0, 201, 20)
     XTICKLABELS = XTICKS
     XTICKLABELS[0] = 1
     YLIM = [-75, 20]
@@ -31,6 +31,7 @@ def plot_learning_curves(data):
 
         if i+1 == len(axs):
             ax.set_xticklabels(XTICKLABELS)
+            ax.set_xlabel('Episode')
         else:
             ax.set_xticklabels([])
 

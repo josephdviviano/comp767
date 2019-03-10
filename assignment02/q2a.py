@@ -8,7 +8,7 @@ import os
 import tqdm
 from rlai import IHT, tiles
 from gym.envs.classic_control import PendulumEnv
-
+import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -134,8 +134,8 @@ class Agent(object):
 
     def run_episode(self):
 
-        #self.iht = IHT(self.tilings * 11 * 11)
-        self.iht = IHT(self.n_tiles)
+        # We want one extra cell in each dimension of IFT, hense 11 * 11.
+        self.iht = IHT(self.tilings * 11 * 11)
         self.eligibility = np.zeros(self.n_tiles)
         done = False
         i = 0

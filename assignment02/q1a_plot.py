@@ -24,33 +24,24 @@ def plot_hp_comparisons(split):
     XTICKS = range(5)
     X = range(5)
     YLIM = [-500, 50]
+    TITLES = ['Sarsa', 'Expected Sarsa', 'Q Learning']
 
-    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
+    f, axs = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
 
-    ax1.plot(np.mean(split.best_seg()[0, :, :, :], axis=2))
-    ax1.set_ylabel('Return')
-    ax1.set_xticks(XTICKS)
-    ax1.set_xticklabels([])
-    ax1.set_ylim(YLIM)
-    ax1.legend(LEGEND)
-    ax1.set_title('Sarsa')
+    for i, ax in enumerate(axs):
 
-    ax2.plot(np.mean(split.best_seg()[1, :, :, :], axis=2))
-    ax2.set_ylabel('Return')
-    ax2.set_xticks(XTICKS)
-    ax2.set_xticklabels([])
-    ax2.set_ylim(YLIM)
-    ax2.legend(LEGEND)
-    ax2.set_title('Expected Sarsa')
+        ax.plot(np.mean(split.best_seg()[i, :, :, :], axis=2))
+        ax.set_ylabel('Return')
+        ax.set_xticks(XTICKS)
+        ax.set_ylim(YLIM)
+        ax.legend(LEGEND)
+        ax.set_title(TITLES[i])
 
-    ax3.plot(np.mean(split.best_seg()[2, :, :, :], axis=2))
-    ax3.set_ylabel('Return')
-    ax3.set_xlabel('Alpha')
-    ax3.set_xticks(XTICKS)
-    ax3.set_xticklabels(XTICKLABELS)
-    ax3.set_ylim(YLIM)
-    ax3.legend(LEGEND)
-    ax3.set_title('Q Learning')
+        if i+1 == len(axs):
+            ax.set_xticklabels(XTICKLABELS)
+            ax.set_xlabel('Alpha')
+        else:
+            ax.set_xticklabels([])
 
     plt.tight_layout()
 
@@ -67,35 +58,29 @@ def plot_learning_curves(train, test):
     YLIM = [-1000, 200]
     ALPHA = 2
     TEMP = 1
+    TITLES = ['Sarsa', 'Expected Sarsa', 'Q Learning']
 
-    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
-    ax1.errorbar(X, train.run_stats()[0][0, ALPHA, TEMP, :], train.run_stats()[1][0, ALPHA, TEMP, :])
-    ax1.errorbar(X, test.run_stats()[0][0, ALPHA, TEMP, :], test.run_stats()[1][0, ALPHA, TEMP, :])
-    ax1.set_ylabel('Return')
-    ax1.set_xticks(XTICKS)
-    ax1.set_xticklabels([])
-    ax1.set_ylim(YLIM)
-    ax1.legend(LEGEND)
-    ax1.set_title('Sarsa')
+    f, axs = plt.subplots(3, 1, sharex=True, figsize=(6, 12))
 
-    ax2.errorbar(X, train.run_stats()[0][1, ALPHA, TEMP, :], train.run_stats()[1][1, ALPHA, TEMP, :])
-    ax2.errorbar(X, test.run_stats()[0][1, ALPHA, TEMP, :], test.run_stats()[1][1, ALPHA, TEMP, :])
-    ax2.set_ylabel('Return')
-    ax2.set_xticks(XTICKS)
-    ax2.set_xticklabels([])
-    ax2.set_ylim(YLIM)
-    ax2.legend(LEGEND)
-    ax2.set_title('Expected Sarsa')
+    for i, ax in enumerate(axs):
+        ax.errorbar(X,
+                     train.run_stats()[0][i, ALPHA, TEMP, :],
+                     train.run_stats()[1][i, ALPHA, TEMP, :])
+        ax.errorbar(X,
+                     test.run_stats()[0][i, ALPHA, TEMP, :],
+                     test.run_stats()[1][i, ALPHA, TEMP, :])
+        ax.set_ylabel('Return')
+        ax.set_xticks(XTICKS)
+        ax.set_xticklabels([])
+        ax.set_ylim(YLIM)
+        ax.legend(LEGEND)
+        ax.set_title(TITLES[i])
 
-    ax3.errorbar(X, train.run_stats()[0][2, ALPHA, TEMP, :], train.run_stats()[1][2, ALPHA, TEMP, :])
-    ax3.errorbar(X, test.run_stats()[0][2, ALPHA, TEMP, :], test.run_stats()[1][2, ALPHA, TEMP, :])
-    ax3.set_ylabel('Return')
-    ax3.set_xlabel('Run')
-    ax3.set_xticks(XTICKS)
-    ax3.set_xticklabels(XTICKLABELS)
-    ax3.set_ylim(YLIM)
-    ax3.legend(LEGEND)
-    ax3.set_title('Q Learning')
+        if i+1 == len(axs):
+            ax.set_xticklabels(XTICKLABELS)
+            ax.set_xlabel('Episode')
+        else:
+            ax.set_xticklabels([])
 
     plt.tight_layout()
 
@@ -116,4 +101,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
