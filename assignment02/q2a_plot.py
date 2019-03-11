@@ -8,7 +8,7 @@ def plot_learning_curves(data):
 
     LEGEND = ['Alpha=1/4', 'Alpha=1/8', 'Alpha=1/16']
     XTICKS = np.arange(0, 201, 20)
-    XTICKLABELS = XTICKS
+    XTICKLABELS = np.arange(0, 201, 20)
     XTICKLABELS[0] = 1
     YLIM = [-30, 5]
     YLABEL = 'Value at (0,0), Goal State'
