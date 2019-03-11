@@ -10,7 +10,7 @@ def plot_learning_curves(data):
     XTICKS = np.arange(0, 201, 20)
     XTICKLABELS = XTICKS
     XTICKLABELS[0] = 1
-    YLIM = [-75, 20]
+    YLIM = [-30, 5]
     YLABEL = 'Value at (0,0), Goal State'
     TITLES = ['Lambda=0.0',
               'Lambda=0.3',

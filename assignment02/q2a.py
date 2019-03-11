@@ -8,7 +8,6 @@ import os
 import tqdm
 from rlai import IHT, tiles
 from gym.envs.classic_control import PendulumEnv
-import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -85,10 +84,10 @@ def parse_args():
     return args
 
 
-def monkey_reset(self):
-    self.state = np.array([np.pi / 2, 0])
-    self.last_u = None
-    return self._get_obs()
+#def monkey_reset(self):
+#    self.state = np.array([np.pi / 2, 0])
+#    self.last_u = None
+#    return self._get_obs()
 
 
 class Agent(object):
@@ -107,7 +106,7 @@ class Agent(object):
         self.torque_prob = torque_prob
         self.tilings = tilings
 
-        PendulumEnv.reset = monkey_reset
+        #PendulumEnv.reset = monkey_reset
         self.env = PendulumEnv()
         self.env.seed(seed)
         self.n_tiles = self.tilings * 10 * 10
@@ -140,15 +139,19 @@ class Agent(object):
         done = False
         i = 0
 
+        # Reset the pendulum to be upright.
         # state[0] = cos(theta), ranges from -1 to 1
         # state[1] = sin(theta), ranges from -1 to 1
         # state[2] = angular velocity , ranges from -8 to 8
         state = self.env.reset()
+        self.env.state = np.array([0, 0])
+        self.env.last_u = None
+        state = np.array([1, 0, 0])
 
         while not done:
 
             # This is the input to the value function
-            x = self.get_tile_positions(state[0], state[2])
+            x = self.get_tile_positions(state[1], state[2])
 
             # Fixed policy: produces torque in the same direction as the
             # current velocity with p=0.9, opposite direction p=0.1.
@@ -167,7 +170,7 @@ class Agent(object):
 
             # This returns a list of {self.tilings} integers. Those are the
             # states we want to update.
-            x_prime = self.get_tile_positions(s_prime[0], s_prime[2])
+            x_prime = self.get_tile_positions(s_prime[1], s_prime[2])
 
             # NB: grad of v(S,w) == x b/c this is linear function approx.
             self.eligibility *= self.trace_decay * self.gamma

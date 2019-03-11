@@ -13,7 +13,7 @@ def parse_args():
 
     parser.add_argument(
         "--runs",
-        help="Number of independant runs",
+        help="Number of independent runs",
         type=int,
         default=10
     )
@@ -51,7 +51,7 @@ def parse_args():
         "--gamma",
         help="Discount factor",
         type=float,
-        default=1.0
+        default=0.9
     )
 
     parser.add_argument(
