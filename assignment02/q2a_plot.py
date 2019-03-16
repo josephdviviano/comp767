@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 def plot_learning_curves(data):
 
     LEGEND = ['Alpha=1/4', 'Alpha=1/8', 'Alpha=1/16']
+    X = np.arange(0, 200)
     XTICKS = np.arange(0, 201, 20)
     XTICKLABELS = np.arange(0, 201, 20)
     XTICKLABELS[0] = 1
@@ -22,7 +23,10 @@ def plot_learning_curves(data):
 
     for i, ax in enumerate(axs):
 
-        ax.plot(np.mean(data[:, :, i, :], axis=0))
+        for j in range(3):
+            ax.errorbar(X, np.mean(data[:, :, i, j], axis=0),
+                           np.std(data[:, :, i, j], axis=0), alpha=0.75)
+
         ax.set_ylabel(YLABEL)
         ax.set_xticks(XTICKS)
         ax.set_ylim(YLIM)
